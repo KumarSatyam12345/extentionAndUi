@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>URL UI</title>
+  <script type="module" crossorigin src="/assets/index-DoQYU7hR.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DkY6RmQq.css">
+</head>
+<body>
+<div id="root"></div>
+
+<!-- React App -->
+
+<!-- Inject listener for React → Extension -->
+<script>
+    window.addEventListener("message", (event) => {
+      if (event.data.type === "OPEN_URL_FROM_UI") {
+        window.postMessage({
+          type: "FOR_CONTENT",
+          payload: event.data.payload
+        }, "*");
+      }
+    });
+</script>
+
+</body>
+</html>

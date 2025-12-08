@@ -1,8 +1,9 @@
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "OPEN_URL") {
-    chrome.tabs.create({
-      url: msg.payload,
-      active: true
-    });
+    const finalURL = msg.payload.includes("?")
+      ? msg.payload + "&openedByExtension=true"
+      : msg.payload + "?openedByExtension=true";
+
+    chrome.tabs.create({ url: finalURL });
   }
 });

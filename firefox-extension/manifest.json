@@ -1,12 +1,14 @@
 {
   "manifest_version": 2,
-  "name": "URL Opener Extension",
+  "name": "Universal URL Opener",
   "version": "1.0",
-  "description": "Open URLs with header",
-  "permissions": ["tabs", "<all_urls>"],
+  "description": "Opens a URL and injects a header if extension is installed.",
+  "permissions": [
+    "tabs",
+    "<all_urls>"
+  ],
   "background": {
-    "scripts": ["background.js"],
-    "persistent": true
+    "scripts": ["background.js"]
   },
   "content_scripts": [
     {
@@ -14,7 +16,10 @@
       "js": ["content.js"]
     }
   ],
-  "browser_action": {
-    "default_popup": "popup/popup.html"
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "urlopener@example.com",
+      "strict_min_version": "57.0"
+    }
   }
 }

@@ -1,3 +1,10 @@
+// Respond back to UI that extension exists
+window.addEventListener("message", (event) => {
+  if (event.data === "CHECK_EXTENSION") {
+    window.postMessage("EXTENSION_INSTALLED", "*");
+  }
+});
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "SHOW_HEADER") {
     addHeader();

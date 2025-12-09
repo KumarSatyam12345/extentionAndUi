@@ -4,7 +4,7 @@ export default function UrlOpener() {
   const [url, setUrl] = useState("");
   const [browserName, setBrowserName] = useState("Browser");
   const [extensionAvailable, setExtensionAvailable] = useState(null);
-  const repliedRef = useRef(false); // NEW FIX
+  const repliedRef = useRef(false);
   const timerRef = useRef(null);
 
   // Detect Browser
@@ -28,7 +28,7 @@ export default function UrlOpener() {
 
     function handleMessage(event) {
       if (event.data === "EXTENSION_INSTALLED") {
-        repliedRef.current = true;       // FIX
+        repliedRef.current = true;
         clearTimeout(timerRef.current);
         setExtensionAvailable(true);
       }
@@ -36,16 +36,15 @@ export default function UrlOpener() {
 
     window.addEventListener("message", handleMessage);
 
-    // Delay sending CHECK_EXTENSION to ensure content.js is fully injected
+    // Delay to ensure content.js is loaded
     setTimeout(() => {
       window.postMessage("CHECK_EXTENSION", "*");
-    }, 100);   // 100 ms delay FIX
+    }, 100);
 
+    // If no reply → extension not installed
     timerRef.current = setTimeout(() => {
       if (!repliedRef.current) {
-        // extension never replied
         setExtensionAvailable(false);
-        window.location.href = dummyLinks[browserName];
       }
     }, 800);
 
@@ -55,9 +54,42 @@ export default function UrlOpener() {
     };
   }, [browserName]);
 
+  // Still checking extension → show nothing
   if (extensionAvailable === null) return null;
-  if (!extensionAvailable) return null;
 
+  const dummyLinks = {
+    Chrome: "https://dummy-download.com/chrome",
+    Edge: "https://dummy-download.com/edge",
+    Firefox: "https://dummy-download.com/firefox",
+    Unknown: "https://dummy-download.com/other",
+  };
+
+  // ------------------------------------------------------------
+  // ❌ EXTENSION NOT INSTALLED → Show fallback UI
+  // ------------------------------------------------------------
+  if (!extensionAvailable) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <h2 style={styles.title}>Extension Not Installed</h2>
+          <p style={{ marginBottom: "20px", fontSize: "16px" }}>
+            To use this feature, please install the extension.
+          </p>
+
+          <button
+            onClick={() => (window.location.href = dummyLinks[browserName])}
+            style={styles.button}
+          >
+            Download Extension
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ------------------------------------------------------------
+  // ✅ EXTENSION IS INSTALLED → Show normal UI
+  // ------------------------------------------------------------
   const sendToExtension = () => {
     if (!url.trim()) return;
 

@@ -6,8 +6,18 @@ export default function UrlOpener() {
   const [extensionAvailable, setExtensionAvailable] = useState(null);
   const repliedRef = useRef(false);
   const timerRef = useRef(null);
+  const [recordedLogs, setRecordedLogs] = useState([]);
 
-  // Detect Browser
+  useEffect(() => {
+    function handleLogs(event) {
+      if (event.data?.type === "SHOW_RECORDED_LOGS_UI") {
+        setRecordedLogs(event.data.payload);
+      }
+    }
+    window.addEventListener("message", handleLogs);
+    return () => window.removeEventListener("message", handleLogs);
+  }, []);
+
   useEffect(() => {
     const ua = navigator.userAgent;
 
@@ -17,7 +27,6 @@ export default function UrlOpener() {
     else setBrowserName("Unknown");
   }, []);
 
-  // Check if extension installed
   useEffect(() => {
     const dummyLinks = {
       Chrome: "https://dummy-download.com/chrome",
@@ -36,12 +45,9 @@ export default function UrlOpener() {
 
     window.addEventListener("message", handleMessage);
 
-    // Delay to ensure content.js is loaded
     setTimeout(() => {
       window.postMessage("CHECK_EXTENSION", "*");
     }, 100);
-
-    // If no reply → extension not installed
     timerRef.current = setTimeout(() => {
       if (!repliedRef.current) {
         setExtensionAvailable(false);
@@ -54,7 +60,6 @@ export default function UrlOpener() {
     };
   }, [browserName]);
 
-  // Still checking extension → show nothing
   if (extensionAvailable === null) return null;
 
   const dummyLinks = {
@@ -64,9 +69,6 @@ export default function UrlOpener() {
     Unknown: "https://dummy-download.com/other",
   };
 
-  // ------------------------------------------------------------
-  // ❌ EXTENSION NOT INSTALLED → Show fallback UI
-  // ------------------------------------------------------------
   if (!extensionAvailable) {
     return (
       <div style={styles.container}>
@@ -87,9 +89,6 @@ export default function UrlOpener() {
     );
   }
 
-  // ------------------------------------------------------------
-  // ✅ EXTENSION IS INSTALLED → Show normal UI
-  // ------------------------------------------------------------
   const sendToExtension = () => {
     if (!url.trim()) return;
 
@@ -118,6 +117,24 @@ export default function UrlOpener() {
         <button onClick={sendToExtension} style={styles.button}>
           Open URL
         </button>
+
+        {recordedLogs.length > 0 && (
+          <div style={{ marginTop: "30px", textAlign: "left" }}>
+            <h3>Recorded Steps:</h3>
+            <pre
+              style={{
+                background: "#f4f4f4",
+                padding: "10px",
+                borderRadius: "10px",
+                maxHeight: "300px",
+                overflowY: "auto",
+              }}
+            >
+              {JSON.stringify(recordedLogs, null, 2)}
+            </pre>
+          </div>
+        )}
+
       </div>
     </div>
   );

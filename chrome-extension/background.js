@@ -29,4 +29,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     });
   }
+
+  if (msg.type === "CAPTURE_FULL") {
+      chrome.tabs.captureVisibleTab({ format: "png" }, (image) => {
+        sendResponse({ image });
+      });
+      return true;
+    }
 });

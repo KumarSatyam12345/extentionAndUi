@@ -121,17 +121,67 @@ export default function UrlOpener() {
         {recordedLogs.length > 0 && (
           <div style={{ marginTop: "30px", textAlign: "left" }}>
             <h3>Recorded Steps:</h3>
-            <pre
+
+            <div
               style={{
-                background: "#f4f4f4",
-                padding: "10px",
-                borderRadius: "10px",
                 maxHeight: "300px",
                 overflowY: "auto",
+                padding: "10px",
+                background: "#f4f4f4",
+                borderRadius: "10px",
               }}
             >
-              {JSON.stringify(recordedLogs, null, 2)}
-            </pre>
+              {recordedLogs.map((log, index) => (
+                <div
+                  key={index}
+                  style={{
+                    background: "white",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    marginBottom: "12px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <div><strong>Type:</strong> {log.type}</div>
+                  <div><strong>Time:</strong> {log.time}</div>
+                  <div><strong>Data:</strong></div>
+
+                  <pre
+                    style={{
+                      background: "#eee",
+                      padding: "8px",
+                      borderRadius: "6px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {JSON.stringify(
+                      (() => {
+                        const cleanData = { ...log.data };
+                        delete cleanData.screenshotImage; // REMOVE BASE64
+                        return cleanData;
+                      })(),
+                      null,
+                      2
+                    )}
+                  </pre>
+
+
+                  {/* Render Screenshot */}
+                  {log.data?.screenshotImage && (
+                    <img
+                      src={log.data.screenshotImage}
+                      alt="step screenshot"
+                      style={{
+                        marginTop: "10px",
+                        maxWidth: "100%",
+                        borderRadius: "8px",
+                        border: "1px solid #ccc",
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

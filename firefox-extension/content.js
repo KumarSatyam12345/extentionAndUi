@@ -1,54 +1,61 @@
-// LISTEN FROM REACT UI
+// ===========================
+// Listen from React UI
+// ===========================
 window.addEventListener("message", (event) => {
   if (event.data === "CHECK_EXTENSION") {
-    chrome.runtime.sendMessage({ type: "CHECK_EXTENSION" }, (res) => {
-      if (res?.installed) {
-        window.postMessage("EXTENSION_INSTALLED", "*");
-      }
-    });
+    // Firefox: browser.runtime.sendMessage returns a Promise
+    try {
+      browser.runtime.sendMessage({ type: "CHECK_EXTENSION" }).then((res) => {
+        if (res?.installed) {
+          window.postMessage("EXTENSION_INSTALLED", "*");
+        }
+      }).catch((err) => {
+        // ignore errors (e.g. no response)
+        // console.debug("CHECK_EXTENSION sendMessage error:", err);
+      });
+    } catch (err) {
+      // fallback safety
+      // console.debug("CHECK_EXTENSION error:", err);
+    }
   }
 
   if (event.data?.type === "OPEN_URL_FROM_UI") {
-    chrome.runtime.sendMessage({
-      type: "OPEN_URL",
-      payload: event.data.payload
-    });
+    try {
+      browser.runtime.sendMessage({
+        type: "OPEN_URL",
+        payload: event.data.payload
+      }).catch((err) => {
+        // console.debug("OPEN_URL sendMessage error:", err);
+      });
+    } catch (err) {
+      // console.debug("OPEN_URL error:", err);
+    }
   }
 });
 
-// LISTEN FROM BACKGROUND
-chrome.runtime.onMessage.addListener((msg) => {
+// ===========================
+// Listen from Service Worker
+// ===========================
+browser.runtime.onMessage.addListener((msg) => {
   if (msg.type === "SHOW_HEADER") {
     addHeader();
   }
 
   if (msg.type === "INJECT_RECORDER_BUTTON") {
-    injectRecorderButton();
-    injectReplayButton();
+    injectToolbarContainer(); // updated toolbar
   }
 
   if (msg.type === "RECORDING_DATA_FROM_EXTENSION") {
-    const safePayload = JSON.parse(JSON.stringify(msg.payload));
-
-    // Ensure screenshot MIME PREFIX
-    safePayload.forEach(log => {
-      if (log.data?.screenshotImage &&
-          !log.data.screenshotImage.startsWith("data:image/png;base64,")) {
-        log.data.screenshotImage =
-          "data:image/png;base64," + log.data.screenshotImage;
-      }
-    });
-
     window.postMessage(
-      { type: "SHOW_RECORDED_LOGS_UI", payload: safePayload },
+      { type: "SHOW_RECORDED_LOGS_UI", payload: msg.payload },
       "*"
     );
   }
 });
 
-// ====================
-// HEADER BANNER
-// ====================
+// ===========================
+// HEADER BANNER (UNCHANGED)
+// ===========================
 function addHeader() {
   const oldHeader = document.getElementById("ext-header-banner");
   if (oldHeader) oldHeader.remove();
@@ -97,211 +104,200 @@ function addHeader() {
   }, 3000);
 }
 
-// (Replay & Recorder buttons remain same — not shown to keep output short)
+// ========================================================
+// 🎛️ COMPACT TOOLBAR (⋮⋮ + RECORDER + REPLAY)
+// ========================================================
+function injectToolbarContainer() {
+  if (document.getElementById("___toolbar_container")) return;
 
-// ===============================
-// DRAGGABLE RECORDING BUTTON
-// ===============================
-function injectRecorderButton() {
-  if (document.getElementById("___recorder_btn")) return;
+  const container = document.createElement("div");
+  container.id = "___toolbar_container";
 
-  const btn = document.createElement("div");
-  btn.id = "___recorder_btn";
+  container.style.position = "fixed";
+  container.style.top = "90px";
+  container.style.right = "40px";
+  container.style.display = "flex";
+  container.style.alignItems = "center";
+  container.style.gap = "10px";
+  container.style.padding = "6px 10px";
+  container.style.borderRadius = "10px";
+  container.style.background = "rgba(255,255,255,0.70)";
+  container.style.backdropFilter = "blur(10px)";
+  container.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)";
+  container.style.cursor = "grab";
+  container.style.zIndex = "99999999999";
 
-  btn.style.position = "fixed";
-  btn.style.top = "80px";
-  btn.style.right = "20px";
-  btn.style.width = "60px";
-  btn.style.height = "60px";
-  btn.style.borderRadius = "50%";
-  btn.style.background = "#FF3B30";
-  btn.style.display = "flex";
-  btn.style.justifyContent = "center";
-  btn.style.alignItems = "center";
-  btn.style.cursor = "grab";
-  btn.style.zIndex = "999999999999";
-  btn.style.boxShadow = "0 4px 10px rgba(0,0,0,0.3)";
+  document.body.appendChild(container);
 
-  // 🔥 Updated Icon
-  btn.innerHTML = `
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-      <circle cx="12" cy="12" r="6"/>
-    </svg>
+  // ⋮⋮ DRAG HANDLE
+  const dragHandle = document.createElement("div");
+  dragHandle.innerHTML = `
+      <svg width="16" height="22" viewBox="0 0 24 24" fill="#555">
+        <circle cx="7" cy="5" r="2"/>
+        <circle cx="7" cy="12" r="2"/>
+        <circle cx="7" cy="19" r="2"/>
+        <circle cx="14" cy="5" r="2"/>
+        <circle cx="14" cy="12" r="2"/>
+        <circle cx="14" cy="19" r="2"/>
+      </svg>
   `;
+  dragHandle.style.pointerEvents = "none";
+  container.appendChild(dragHandle);
 
-  document.body.appendChild(btn);
+  // ====================================================
+  // 🎤 RECORDER BUTTON + LABEL
+  // ====================================================
+  const recorderWrapper = document.createElement("div");
+  recorderWrapper.style.position = "relative";
+  recorderWrapper.style.display = "flex";
+  recorderWrapper.style.justifyContent = "center";
 
-  let isDown = false;
-  let startX = 0, startY = 0;
-  let offsetX = 0, offsetY = 0;
-  let hasMoved = false;
+  const recorderBtn = document.createElement("div");
+  recorderBtn.style.width = "42px";
+  recorderBtn.style.height = "42px";
+  recorderBtn.style.borderRadius = "50%";
+  recorderBtn.style.background = "#e9e9ec";
+  recorderBtn.style.display = "flex";
+  recorderBtn.style.justifyContent = "center";
+  recorderBtn.style.alignItems = "center";
+  recorderBtn.style.cursor = "pointer";
+  recorderBtn.style.boxShadow = "0 3px 6px rgba(0,0,0,0.15)";
+  recorderBtn.style.transition = "transform 0.15s ease";
 
-  const MIN_X = 0;
-  const MIN_Y = 60;
+  const recInner = document.createElement("div");
+  recInner.style.width = "20px";
+  recInner.style.height = "20px";
+  recInner.style.borderRadius = "5px";
+  recInner.style.background = "#ff1a28";
+  recorderBtn.appendChild(recInner);
 
-  // DRAG START
-  btn.addEventListener("mousedown", (e) => {
-    isDown = true;
-    hasMoved = false;
-    btn.style.cursor = "grabbing";
+  // LABEL
+  const recLabel = document.createElement("div");
+  recLabel.innerText = "Record";
+  recLabel.style.position = "absolute";
+  recLabel.style.top = "48px";
+  recLabel.style.fontSize = "11px";
+  recLabel.style.fontWeight = "600";
+  recLabel.style.color = "#333";
+  recLabel.style.opacity = "0";
+  recLabel.style.transition = "opacity 0.2s ease";
 
-    startX = e.clientX;
-    startY = e.clientY;
+  recorderWrapper.appendChild(recorderBtn);
+  recorderWrapper.appendChild(recLabel);
+  container.appendChild(recorderWrapper);
 
-    offsetX = e.clientX - btn.getBoundingClientRect().left;
-    offsetY = e.clientY - btn.getBoundingClientRect().top;
-  });
+  recorderBtn.onmouseenter = () => {
+    recorderBtn.style.transform = "scale(1.08)";
+    recLabel.style.opacity = "1";
+  };
+  recorderBtn.onmouseleave = () => {
+    recorderBtn.style.transform = "scale(1)";
+    recLabel.style.opacity = "0";
+  };
 
-  // DRAG MOVE
-  document.addEventListener("mousemove", (e) => {
-    if (!isDown) return;
+  recorderBtn.onclick = toggleRecording;
 
-    const dx = Math.abs(e.clientX - startX);
-    const dy = Math.abs(e.clientY - startY);
-
-    if (dx > 5 || dy > 5) hasMoved = true;
-
-    if (hasMoved) {
-      let newLeft = e.clientX - offsetX;
-      let newTop = e.clientY - offsetY;
-
-      const maxX = window.innerWidth - btn.offsetWidth;
-      const maxY = window.innerHeight - btn.offsetHeight;
-
-      if (newLeft < MIN_X) newLeft = MIN_X;
-      if (newTop < MIN_Y) newTop = MIN_Y;
-      if (newLeft > maxX) newLeft = maxX;
-      if (newTop > maxY) newTop = maxY;
-
-      btn.style.left = newLeft + "px";
-      btn.style.top = newTop + "px";
-      btn.style.right = "auto";
-      btn.style.bottom = "auto";
-    }
-  });
-
-  // DRAG END
-  document.addEventListener("mouseup", () => {
-    if (!isDown) return;
-    isDown = false;
-    btn.style.cursor = "grab";
-
-    if (!hasMoved) toggleRecording(btn);
-  });
-
-  function toggleRecording(btn) {
-    if (btn.dataset.state !== "recording") {
-      btn.dataset.state = "recording";
-
+  function toggleRecording() {
+    if (recorderBtn.dataset.state !== "recording") {
+      recorderBtn.dataset.state = "recording";
+      recInner.style.background = "#34c759";
+      recInner.style.borderRadius = "4px";
+      recLabel.innerText = "Recording...";
       window.dispatchEvent(new CustomEvent("START_RECORDING"));
-
-      btn.style.background = "#28CD41"; // green
-      btn.innerHTML = `
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-          <rect x="7" y="7" width="10" height="10" rx="2"/>
-        </svg>
-      `;
     } else {
-      btn.dataset.state = "stopped";
-
+      recorderBtn.dataset.state = "stopped";
+      recInner.style.background = "#ff1a28";
+      recInner.style.borderRadius = "5px";
+      recLabel.innerText = "Record";
       window.dispatchEvent(new CustomEvent("STOP_RECORDING"));
-
-      btn.style.background = "#FF3B30"; // red
-      btn.innerHTML = `
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-          <circle cx="12" cy="12" r="6"/>
-        </svg>
-      `;
     }
   }
-}
 
-// ===============================
-// DRAGGABLE REPLAY BUTTON
-// ===============================
-function injectReplayButton() {
-  if (document.getElementById("___replay_btn")) return;
+  // ====================================================
+  // 🔁 REPLAY BUTTON + LABEL
+  // ====================================================
+  const replayWrapper = document.createElement("div");
+  replayWrapper.style.position = "relative";
+  replayWrapper.style.display = "flex";
+  replayWrapper.style.justifyContent = "center";
 
-  const btn = document.createElement("div");
-  btn.id = "___replay_btn";
+  const replayBtn = document.createElement("div");
+  replayBtn.style.width = "42px";
+  replayBtn.style.height = "42px";
+  replayBtn.style.borderRadius = "50%";
+  replayBtn.style.background = "rgba(255, 159, 10, 0.85)";
+  replayBtn.style.display = "flex";
+  replayBtn.style.justifyContent = "center";
+  replayBtn.style.alignItems = "center";
+  replayBtn.style.cursor = "pointer";
+  replayBtn.style.boxShadow =
+    "0 3px 8px rgba(0,0,0,0.25), inset 0 0 6px rgba(255,255,255,0.3)";
+  replayBtn.style.transition = "transform 0.15s ease";
 
-  btn.style.position = "fixed";
-  btn.style.top = "80px";
-  btn.style.right = "100px";
-  btn.style.width = "60px";
-  btn.style.height = "60px";
-  btn.style.borderRadius = "50%";
-  btn.style.background = "#FF9F0A";
-  btn.style.display = "flex";
-  btn.style.justifyContent = "center";
-  btn.style.alignItems = "center";
-  btn.style.cursor = "grab";
-  btn.style.zIndex = "999999999999";
-  btn.style.boxShadow = "0 4px 10px rgba(0,0,0,0.3)";
-
-  // 🔥 Updated Replay Icon
-  btn.innerHTML = `
-    <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
-      <path d="M12 5V2L6 7l6 5V9a6 6 0 1 1-6 6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/>
-    </svg>
+  replayBtn.innerHTML = `
+      <svg width="20" height="20" fill="white" viewBox="0 0 24 24" style="pointer-events:none;">
+        <path d="M12 5V2L5 8l7 6V9a5 5 0 1 1-5 5H5c0 4 3 7 7 7s7-3 7-7-3-7-7-7z"/>
+      </svg>
   `;
 
-  document.body.appendChild(btn);
+  // LABEL
+  const replayLabel = document.createElement("div");
+  replayLabel.innerText = "Replay";
+  replayLabel.style.position = "absolute";
+  replayLabel.style.top = "48px";
+  replayLabel.style.fontSize = "11px";
+  replayLabel.style.fontWeight = "600";
+  replayLabel.style.color = "#ff9f0a";
+  replayLabel.style.opacity = "0";
+  replayLabel.style.transition = "opacity 0.2s ease";
 
+  replayWrapper.appendChild(replayBtn);
+  replayWrapper.appendChild(replayLabel);
+  container.appendChild(replayWrapper);
+
+  replayBtn.onmouseenter = () => {
+    replayBtn.style.transform = "scale(1.08)";
+    replayLabel.style.opacity = "1";
+  };
+  replayBtn.onmouseleave = () => {
+    replayBtn.style.transform = "scale(1)";
+    replayLabel.style.opacity = "0";
+  };
+
+  replayBtn.onclick = () => {
+    window.dispatchEvent(new CustomEvent("REPLAY_CLICKED"));
+  };
+
+  // ====================================================
+  // DRAG LOGIC
+  // ====================================================
   let isDown = false;
-  let startX = 0, startY = 0;
-  let offsetX = 0, offsetY = 0;
-  let hasMoved = false;
+  let offsetX = 0;
+  let offsetY = 0;
 
-  const MIN_X = 0;
-  const MIN_Y = 60;
-
-  btn.addEventListener("mousedown", (e) => {
+  container.addEventListener("mousedown", (e) => {
     isDown = true;
-    hasMoved = false;
-    btn.style.cursor = "grabbing";
-
-    startX = e.clientX;
-    startY = e.clientY;
-
-    offsetX = e.clientX - btn.getBoundingClientRect().left;
-    offsetY = e.clientY - btn.getBoundingClientRect().top;
+    container.style.cursor = "grabbing";
+    offsetX = e.clientX - container.offsetLeft;
+    offsetY = e.clientY - container.offsetTop;
   });
 
   document.addEventListener("mousemove", (e) => {
     if (!isDown) return;
 
-    const dx = Math.abs(e.clientX - startX);
-    const dy = Math.abs(e.clientY - startY);
-    if (dx > 5 || dy > 5) hasMoved = true;
+    let x = e.clientX - offsetX;
+    let y = e.clientY - offsetY;
 
-    if (hasMoved) {
-      let newLeft = e.clientX - offsetX;
-      let newTop = e.clientY - offsetY;
+    x = Math.max(0, Math.min(x, window.innerWidth - container.offsetWidth));
+    y = Math.max(0, Math.min(y, window.innerHeight - container.offsetHeight));
 
-      const maxX = window.innerWidth - btn.offsetWidth;
-      const maxY = window.innerHeight - btn.offsetHeight;
-
-      if (newLeft < MIN_X) newLeft = MIN_X;
-      if (newTop < MIN_Y) newTop = MIN_Y;
-      if (newLeft > maxX) newLeft = maxX;
-      if (newTop > maxY) newTop = maxY;
-
-      btn.style.left = newLeft + "px";
-      btn.style.top = newTop + "px";
-      btn.style.right = "auto";
-      btn.style.bottom = "auto";
-    }
+    container.style.left = `${x}px`;
+    container.style.top = `${y}px`;
+    container.style.right = "auto";
   });
 
   document.addEventListener("mouseup", () => {
-    if (!isDown) return;
     isDown = false;
-    btn.style.cursor = "grab";
-
-    if (!hasMoved) {
-      console.log("Replay clicked");
-      window.dispatchEvent(new CustomEvent("REPLAY_CLICKED"));
-    }
+    container.style.cursor = "grab";
   });
 }

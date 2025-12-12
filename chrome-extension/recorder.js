@@ -130,6 +130,9 @@ function logEvent(type, data) {
 globalThis.addEventListener("blur", (e) => commitFinalInput(e.target), true);
 
 globalThis.addEventListener("click", (e) => {
+   if (e.target.closest("#___toolbar_container")) {
+       return;
+   }
   commitFinalInput(document.activeElement);
   throttledClickCapture(e.target);
 });

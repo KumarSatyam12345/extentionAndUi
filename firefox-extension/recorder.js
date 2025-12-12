@@ -1,11 +1,15 @@
+// ============ UNIVERSAL EXTENSION API (Chrome + Firefox) ============
+const EXT = typeof browser !== "undefined" ? browser : chrome;
+
 let isRecording = false;
 let logs = [];
 
+// Highlight Configuration
 const HIGHLIGHT_COLOR = "rgba(255, 255, 0, 0.3)";
 const BORDER_COLOR = "yellow";
 const BORDER_WIDTH = 4;
 
-// throttle
+// ------------ 200ms Throttle ----------
 function throttle(fn, delay) {
   let waiting = false;
   let lastArgs = null;
@@ -25,24 +29,13 @@ function throttle(fn, delay) {
   };
 }
 
+// --------------------------------------
 function requestScreenshot(callback) {
-  chrome.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
+  EXT.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
 }
 
-// ==============================
-// 🔥 FIREFOX FIX ADDED HERE
-// ==============================
 function cropElementFromScreenshot(fullImgSrc, rect, callback) {
   const img = new Image();
-
-  // Firefox requires this for canvas drawing
-  img.crossOrigin = "anonymous";
-
-  // Firefox sometimes returns raw base64 string
-  if (!fullImgSrc.startsWith("data:image/png;base64,")) {
-    fullImgSrc = "data:image/png;base64," + fullImgSrc;
-  }
-
   img.src = fullImgSrc;
 
   img.onload = () => {
@@ -84,6 +77,7 @@ async function captureElement(target, done) {
 
   requestScreenshot((resp) => {
     if (!resp?.image) return done(null);
+
     cropElementFromScreenshot(resp.image, rect, done);
   });
 }
@@ -139,6 +133,11 @@ function logEvent(type, data) {
 globalThis.addEventListener("blur", (e) => commitFinalInput(e.target), true);
 
 globalThis.addEventListener("click", (e) => {
+  // 🛑 Ignore clicks inside extension toolbar
+  if (e.target.closest("#___toolbar_container")) {
+    return;
+  }
+
   commitFinalInput(document.activeElement);
   throttledClickCapture(e.target);
 });
@@ -169,5 +168,5 @@ globalThis.addEventListener("START_RECORDING", () => {
 
 globalThis.addEventListener("STOP_RECORDING", () => {
   isRecording = false;
-  chrome.runtime.sendMessage({ type: "RECORDING_DATA", payload: logs });
+  EXT.runtime.sendMessage({ type: "RECORDING_DATA", payload: logs });
 });

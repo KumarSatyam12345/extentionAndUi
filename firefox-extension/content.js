@@ -1,22 +1,12 @@
-// ===========================
-// Listen from React UI
-// ===========================
 window.addEventListener("message", (event) => {
   if (event.data === "CHECK_EXTENSION") {
-    // Firefox: browser.runtime.sendMessage returns a Promise
     try {
       browser.runtime.sendMessage({ type: "CHECK_EXTENSION" }).then((res) => {
         if (res?.installed) {
           window.postMessage("EXTENSION_INSTALLED", "*");
         }
-      }).catch((err) => {
-        // ignore errors (e.g. no response)
-        // console.debug("CHECK_EXTENSION sendMessage error:", err);
-      });
-    } catch (err) {
-      // fallback safety
-      // console.debug("CHECK_EXTENSION error:", err);
-    }
+      }).catch((err) => {});
+    } catch (err) {}
   }
 
   if (event.data?.type === "OPEN_URL_FROM_UI") {
@@ -24,25 +14,17 @@ window.addEventListener("message", (event) => {
       browser.runtime.sendMessage({
         type: "OPEN_URL",
         payload: event.data.payload
-      }).catch((err) => {
-        // console.debug("OPEN_URL sendMessage error:", err);
-      });
-    } catch (err) {
-      // console.debug("OPEN_URL error:", err);
-    }
+      }).catch((err) => {});
+    } catch (err) {}
   }
 });
-
-// ===========================
-// Listen from Service Worker
-// ===========================
 browser.runtime.onMessage.addListener((msg) => {
   if (msg.type === "SHOW_HEADER") {
     addHeader();
   }
 
   if (msg.type === "INJECT_RECORDER_BUTTON") {
-    injectToolbarContainer(); // updated toolbar
+    injectToolbarContainer();
   }
 
   if (msg.type === "RECORDING_DATA_FROM_EXTENSION") {
@@ -53,9 +35,6 @@ browser.runtime.onMessage.addListener((msg) => {
   }
 });
 
-// ===========================
-// HEADER BANNER (UNCHANGED)
-// ===========================
 function addHeader() {
   const oldHeader = document.getElementById("ext-header-banner");
   if (oldHeader) oldHeader.remove();
@@ -104,9 +83,6 @@ function addHeader() {
   }, 3000);
 }
 
-// ========================================================
-// 🎛️ COMPACT TOOLBAR (⋮⋮ + RECORDER + REPLAY)
-// ========================================================
 function injectToolbarContainer() {
   if (document.getElementById("___toolbar_container")) return;
 
@@ -143,10 +119,6 @@ function injectToolbarContainer() {
   `;
   dragHandle.style.pointerEvents = "none";
   container.appendChild(dragHandle);
-
-  // ====================================================
-  // 🎤 RECORDER BUTTON + LABEL
-  // ====================================================
   const recorderWrapper = document.createElement("div");
   recorderWrapper.style.position = "relative";
   recorderWrapper.style.display = "flex";
@@ -213,9 +185,6 @@ function injectToolbarContainer() {
     }
   }
 
-  // ====================================================
-  // 🔁 REPLAY BUTTON + LABEL
-  // ====================================================
   const replayWrapper = document.createElement("div");
   replayWrapper.style.position = "relative";
   replayWrapper.style.display = "flex";
@@ -239,8 +208,6 @@ function injectToolbarContainer() {
         <path d="M12 5V2L5 8l7 6V9a5 5 0 1 1-5 5H5c0 4 3 7 7 7s7-3 7-7-3-7-7-7z"/>
       </svg>
   `;
-
-  // LABEL
   const replayLabel = document.createElement("div");
   replayLabel.innerText = "Replay";
   replayLabel.style.position = "absolute";
@@ -267,10 +234,6 @@ function injectToolbarContainer() {
   replayBtn.onclick = () => {
     window.dispatchEvent(new CustomEvent("REPLAY_CLICKED"));
   };
-
-  // ====================================================
-  // DRAG LOGIC
-  // ====================================================
   let isDown = false;
   let offsetX = 0;
   let offsetY = 0;

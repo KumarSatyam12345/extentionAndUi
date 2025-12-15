@@ -25,18 +25,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     });
   }
-
-  // ================================
-  // 🔥 FIREFOX FIX FOR SCREENSHOT
-  // ================================
   if (msg.type === "CAPTURE_FULL") {
     chrome.tabs.captureVisibleTab({ format: "png" }, (image) => {
-
-      // Firefox sometimes returns pure base64 without MIME
       if (image && !image.startsWith("data:image/png;base64,")) {
         image = "data:image/png;base64," + image;
       }
-
       sendResponse({ image });
     });
     return true;
@@ -44,12 +37,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "CAPTURE_SCREENSHOT") {
     chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
-
-      // Firefox FIX
       if (dataUrl && !dataUrl.startsWith("data:image/png;base64,")) {
         dataUrl = "data:image/png;base64," + dataUrl;
       }
-
       sendResponse({ screenshot: dataUrl });
     });
     return true;

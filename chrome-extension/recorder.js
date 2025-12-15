@@ -1,12 +1,10 @@
 let isRecording = false;
 let logs = [];
 
-// Highlight Configuration
 const HIGHLIGHT_COLOR = "rgba(255, 255, 0, 0.3)";
 const BORDER_COLOR = "yellow";
 const BORDER_WIDTH = 4;
 
-// ------------ 200ms Throttle ----------
 function throttle(fn, delay) {
   let waiting = false;
   let lastArgs = null;
@@ -26,7 +24,6 @@ function throttle(fn, delay) {
   };
 }
 
-// --------------------------------------
 function requestScreenshot(callback) {
   chrome.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
 }
@@ -67,21 +64,18 @@ function cropElementFromScreenshot(fullImgSrc, rect, callback) {
   };
 }
 
-async function captureElement(target, done) {
+function captureElement(target, done) {
   if (!target) return done(null);
 
   const rect = target.getBoundingClientRect();
 
   requestScreenshot((resp) => {
     if (!resp?.image) return done(null);
-
     cropElementFromScreenshot(resp.image, rect, done);
   });
 }
 
-// --------------------------------------
 let lastInputValue = {};
-
 const throttledInputCapture = throttle((target) => {
   captureElement(target, (screenshot) => {
     logEvent("input", {
@@ -92,7 +86,7 @@ const throttledInputCapture = throttle((target) => {
   });
 }, 200);
 
-async function commitFinalInput(target) {
+function commitFinalInput(target) {
   if (target?.tagName !== "INPUT") return;
   if (target.type === "password") return;
 
@@ -100,61 +94,54 @@ async function commitFinalInput(target) {
   const value = target.value;
 
   if (lastInputValue[id] === value) return;
-
   lastInputValue[id] = value;
 
   throttledInputCapture(target);
 }
 
-// --------------------------------------
-
-const throttledClickCapture = throttle((target) => {
-  captureElement(target, (screenshot) => {
-    logEvent("click", {
-      text: target.innerText,
-      id: target.id,
-      class: target.className,
-      screenshotImage: screenshot
-    });
-  });
-}, 200);
-
-// --------------------------------------
 function logEvent(type, data) {
   if (!isRecording) return;
   logs.push({ time: new Date().toISOString(), type, data });
 }
 
-// --------------------------------------
-// EVENT LISTENERS
+globalThis.addEventListener(
+  "mousedown",
+  (e) => {
+    if (e.target.closest("#___toolbar_container")) return;
+
+    commitFinalInput(document.activeElement);
+
+    const target = e.target;
+
+    captureElement(target, (screenshot) => {
+      logEvent("click", {
+        text: target.innerText,
+        id: target.id,
+        class: target.className,
+        screenshotImage: screenshot
+      });
+    });
+  },
+  true
+);
+
 globalThis.addEventListener("blur", (e) => commitFinalInput(e.target), true);
 
-globalThis.addEventListener("click", (e) => {
-   if (e.target.closest("#___toolbar_container")) {
-       return;
-   }
-  commitFinalInput(document.activeElement);
-  throttledClickCapture(e.target);
-});
-
-// Scroll event (THROTTLED ONLY — 200ms)
 let lastScrollTime = 0;
 const SCROLL_THROTTLE_MS = 200;
 
 window.addEventListener("scroll", () => {
   const now = Date.now();
-  if (now - lastScrollTime < SCROLL_THROTTLE_MS) return; // throttle
+  if (now - lastScrollTime < SCROLL_THROTTLE_MS) return;
 
   lastScrollTime = now;
   logEvent("scroll", { position: window.scrollY });
 });
 
-// Tab navigation
 globalThis.addEventListener("keydown", (e) => {
   if (e.key === "Tab") commitFinalInput(document.activeElement);
 });
 
-// Start & Stop
 globalThis.addEventListener("START_RECORDING", () => {
   logs = [];
   lastInputValue = {};
@@ -163,5 +150,8 @@ globalThis.addEventListener("START_RECORDING", () => {
 
 globalThis.addEventListener("STOP_RECORDING", () => {
   isRecording = false;
-  chrome.runtime.sendMessage({ type: "RECORDING_DATA", payload: logs });
+  chrome.runtime.sendMessage({
+    type: "RECORDING_DATA",
+    payload: logs
+  });
 });

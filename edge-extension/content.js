@@ -1,6 +1,3 @@
-// ===========================
-// Listen from React UI
-// ===========================
 window.addEventListener("message", (event) => {
   if (event.data === "CHECK_EXTENSION") {
     chrome.runtime.sendMessage({ type: "CHECK_EXTENSION" }, (res) => {
@@ -18,9 +15,6 @@ window.addEventListener("message", (event) => {
   }
 });
 
-// ===========================
-// Listen from Service Worker
-// ===========================
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "SHOW_HEADER") {
     addHeader();
@@ -38,9 +32,6 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
-// ===========================
-// HEADER BANNER (UNCHANGED)
-// ===========================
 function addHeader() {
   const oldHeader = document.getElementById("ext-header-banner");
   if (oldHeader) oldHeader.remove();
@@ -89,9 +80,6 @@ function addHeader() {
   }, 3000);
 }
 
-// ========================================================
-// 🎛️ COMPACT TOOLBAR (⋮⋮ + RECORDER + REPLAY)
-// ========================================================
 function injectToolbarContainer() {
   if (document.getElementById("___toolbar_container")) return;
 
@@ -128,10 +116,6 @@ function injectToolbarContainer() {
   `;
   dragHandle.style.pointerEvents = "none";
   container.appendChild(dragHandle);
-
-  // ====================================================
-  // 🎤 RECORDER BUTTON + LABEL
-  // ====================================================
   const recorderWrapper = document.createElement("div");
   recorderWrapper.style.position = "relative";
   recorderWrapper.style.display = "flex";
@@ -183,24 +167,20 @@ function injectToolbarContainer() {
   recorderBtn.onclick = toggleRecording;
 
   function toggleRecording() {
-    if (recorderBtn.dataset.state !== "recording") {
-      recorderBtn.dataset.state = "recording";
-      recInner.style.background = "#34c759";
-      recInner.style.borderRadius = "4px";
-      recLabel.innerText = "Recording...";
-      window.dispatchEvent(new CustomEvent("START_RECORDING"));
-    } else {
+    if (recorderBtn.dataset.state === "recording") {
       recorderBtn.dataset.state = "stopped";
       recInner.style.background = "#ff1a28";
       recInner.style.borderRadius = "5px";
       recLabel.innerText = "Record";
       window.dispatchEvent(new CustomEvent("STOP_RECORDING"));
+    } else {
+      recorderBtn.dataset.state = "recording";
+      recInner.style.background = "#34c759";
+      recInner.style.borderRadius = "4px";
+      recLabel.innerText = "Recording...";
+      window.dispatchEvent(new CustomEvent("START_RECORDING"));
     }
   }
-
-  // ====================================================
-  // 🔁 REPLAY BUTTON + LABEL
-  // ====================================================
   const replayWrapper = document.createElement("div");
   replayWrapper.style.position = "relative";
   replayWrapper.style.display = "flex";

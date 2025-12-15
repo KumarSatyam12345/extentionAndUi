@@ -1,3 +1,5 @@
+const EXT = typeof browser !== "undefined" ? browser : chrome;
+
 let isRecording = false;
 let logs = [];
 
@@ -5,27 +7,8 @@ const HIGHLIGHT_COLOR = "rgba(255, 255, 0, 0.3)";
 const BORDER_COLOR = "yellow";
 const BORDER_WIDTH = 4;
 
-function throttle(fn, delay) {
-  let waiting = false;
-  let lastArgs = null;
-
-  return (...args) => {
-    lastArgs = args;
-    if (!waiting) {
-      fn(...lastArgs);
-      lastArgs = null;
-      waiting = true;
-
-      setTimeout(() => {
-        waiting = false;
-        if (lastArgs) fn(...lastArgs);
-      }, delay);
-    }
-  };
-}
-
 function requestScreenshot(callback) {
-  chrome.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
+  EXT.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
 }
 
 function cropElementFromScreenshot(fullImgSrc, rect, callback) {
@@ -76,18 +59,9 @@ function captureElement(target, done) {
 }
 
 let lastInputValue = {};
-const throttledInputCapture = throttle((target) => {
-  captureElement(target, (screenshot) => {
-    logEvent("input", {
-      id: target.id || "unknown",
-      value: target.value,
-      screenshotImage: screenshot
-    });
-  });
-}, 200);
 
 function commitFinalInput(target) {
-  if (target?.tagName !== "INPUT") return;
+  if (!target || target.tagName !== "INPUT") return;
   if (target.type === "password") return;
 
   const id = target.id || "unknown";
@@ -96,7 +70,13 @@ function commitFinalInput(target) {
   if (lastInputValue[id] === value) return;
   lastInputValue[id] = value;
 
-  throttledInputCapture(target);
+  captureElement(target, (screenshot) => {
+    logEvent("input", {
+      id,
+      value,
+      screenshotImage: screenshot
+    });
+  });
 }
 
 function logEvent(type, data) {
@@ -122,7 +102,7 @@ globalThis.addEventListener(
       });
     });
   },
-  true
+  true // capture phase
 );
 
 globalThis.addEventListener("blur", (e) => commitFinalInput(e.target), true);
@@ -150,7 +130,7 @@ globalThis.addEventListener("START_RECORDING", () => {
 
 globalThis.addEventListener("STOP_RECORDING", () => {
   isRecording = false;
-  chrome.runtime.sendMessage({
+  EXT.runtime.sendMessage({
     type: "RECORDING_DATA",
     payload: logs
   });

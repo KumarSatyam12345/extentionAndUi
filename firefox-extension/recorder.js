@@ -1,21 +1,14 @@
-// ============ UNIVERSAL EXTENSION API (Chrome + Firefox) ============
 const EXT = typeof browser !== "undefined" ? browser : chrome;
 
 let isRecording = false;
 let logs = [];
-
-// Highlight Configuration
 const HIGHLIGHT_COLOR = "rgba(255, 255, 0, 0.3)";
 const BORDER_COLOR = "yellow";
 const BORDER_WIDTH = 4;
-
-// --------------------------------------
 function requestScreenshot(callback) {
   EXT.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
 }
 
-// --------------------------------------
-// 🔥 CROPPING (works for Chrome + Firefox)
 function cropElementFromScreenshot(fullImgSrc, rect, callback) {
   const img = new Image();
   img.src = fullImgSrc;
@@ -40,8 +33,6 @@ function cropElementFromScreenshot(fullImgSrc, rect, callback) {
       rect.width * dpr,
       rect.height * dpr
     );
-
-    // highlight
     ctx.fillStyle = HIGHLIGHT_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -53,7 +44,6 @@ function cropElementFromScreenshot(fullImgSrc, rect, callback) {
   };
 }
 
-// --------------------------------------
 function captureElement(target, done) {
   if (!target) return done(null);
 
@@ -65,7 +55,6 @@ function captureElement(target, done) {
   });
 }
 
-// --------------------------------------
 let lastInputValue = {};
 
 function commitFinalInput(target) {
@@ -87,19 +76,14 @@ function commitFinalInput(target) {
   });
 }
 
-// --------------------------------------
 function logEvent(type, data) {
   if (!isRecording) return;
   logs.push({ time: new Date().toISOString(), type, data });
 }
 
-// =====================================================
-// 🔥🔥🔥 MOUSEDOWN FIX (LOGIN ISSUE SOLVED HERE)
-// =====================================================
 globalThis.addEventListener(
   "mousedown",
   (e) => {
-    // ignore extension toolbar
     if (e.target.closest("#___toolbar_container")) return;
 
     commitFinalInput(document.activeElement);
@@ -115,15 +99,10 @@ globalThis.addEventListener(
       });
     });
   },
-  true // capture phase
+  true
 );
 
-// --------------------------------------
-// Blur (input finalize)
 globalThis.addEventListener("blur", (e) => commitFinalInput(e.target), true);
-
-// --------------------------------------
-// Scroll (ONLY throttled – 200ms)
 let lastScrollTime = 0;
 const SCROLL_THROTTLE_MS = 200;
 
@@ -135,14 +114,10 @@ window.addEventListener("scroll", () => {
   logEvent("scroll", { position: window.scrollY });
 });
 
-// --------------------------------------
-// Tab navigation
 globalThis.addEventListener("keydown", (e) => {
   if (e.key === "Tab") commitFinalInput(document.activeElement);
 });
 
-// --------------------------------------
-// Start / Stop Recording
 globalThis.addEventListener("START_RECORDING", () => {
   logs = [];
   lastInputValue = {};

@@ -28,13 +28,6 @@ export default function UrlOpener() {
   }, []);
 
   useEffect(() => {
-    const dummyLinks = {
-      Chrome: "https://dummy-download.com/chrome",
-      Edge: "https://dummy-download.com/edge",
-      Firefox: "https://dummy-download.com/firefox",
-      Unknown: "https://dummy-download.com/other",
-    };
-
     function handleMessage(event) {
       if (event.data === "EXTENSION_INSTALLED") {
         repliedRef.current = true;
@@ -62,11 +55,10 @@ export default function UrlOpener() {
 
   if (extensionAvailable === null) return null;
 
-  const dummyLinks = {
-    Chrome: "https://dummy-download.com/chrome",
-    Edge: "https://dummy-download.com/edge",
-    Firefox: "https://dummy-download.com/firefox",
-    Unknown: "https://dummy-download.com/other",
+  const downloadLinks = {
+    Chrome: "http://localhost:8080/api/zip/download/chrome-extension.zip",
+    Edge: "http://localhost:8080/api/zip/download/edge-extension.zip",
+    Firefox: "http://localhost:8080/api/zip/download/firefox-extension.zip",
   };
 
   if (!extensionAvailable) {
@@ -79,7 +71,14 @@ export default function UrlOpener() {
           </p>
 
           <button
-            onClick={() => (window.location.href = dummyLinks[browserName])}
+            onClick={() => {
+              const downloadUrl = downloadLinks[browserName];
+              if (!downloadUrl) {
+                alert("Unsupported browser");
+                return;
+              }
+              window.location.href = downloadUrl;
+            }}
             style={styles.button}
           >
             Download Extension

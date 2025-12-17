@@ -214,7 +214,7 @@ function injectToolbarContainer() {
   replayLabel.style.top = "48px";
   replayLabel.style.fontSize = "11px";
   replayLabel.style.fontWeight = "600";
-  replayLabel.style.color = "#ff9f0a";
+  replayLabel.style.color = "#333";
   replayLabel.style.opacity = "0";
   replayLabel.style.transition = "opacity 0.2s ease";
 

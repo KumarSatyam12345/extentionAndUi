@@ -30,6 +30,12 @@ chrome.runtime.onMessage.addListener((msg) => {
       "*"
     );
   }
+  if (msg.type === "NETWORK_LOGS_FROM_EXTENSION") {
+      window.postMessage(
+        { type: "SHOW_NETWORK_LOGS_UI", payload: msg.payload },
+        "*"
+      );
+    }
 });
 
 function addHeader() {

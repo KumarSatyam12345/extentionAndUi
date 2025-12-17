@@ -7,13 +7,19 @@ export default function UrlOpener() {
   const repliedRef = useRef(false);
   const timerRef = useRef(null);
   const [recordedLogs, setRecordedLogs] = useState([]);
+  const [networkLogs, setNetworkLogs] = useState([]);
 
   useEffect(() => {
     function handleLogs(event) {
       if (event.data?.type === "SHOW_RECORDED_LOGS_UI") {
         setRecordedLogs(event.data.payload);
       }
+
+      if (event.data?.type === "SHOW_NETWORK_LOGS_UI") {
+        setNetworkLogs(event.data.payload);
+      }
     }
+
     window.addEventListener("message", handleLogs);
     return () => window.removeEventListener("message", handleLogs);
   }, []);
@@ -183,6 +189,52 @@ export default function UrlOpener() {
             </div>
           </div>
         )}
+        {networkLogs.length > 0 && (
+          <div style={{ marginTop: "30px", textAlign: "left" }}>
+            <h3>Network Logs:</h3>
+
+            <div
+              style={{
+                maxHeight: "300px",
+                overflowY: "auto",
+                padding: "10px",
+                background: "#f4f4f4",
+                borderRadius: "10px",
+              }}
+            >
+              {networkLogs.map((log, index) => (
+                <div
+                  key={index}
+                  style={{
+                    background: "white",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    marginBottom: "12px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <div><strong>Method:</strong> {log.method}</div>
+                  <div><strong>Status:</strong> {log.status}</div>
+                  <div><strong>Time:</strong> {log.time}</div>
+
+                  <div><strong>URL:</strong></div>
+                  <pre
+                    style={{
+                      fontSize: "12px",
+                      background: "#eee",
+                      padding: "8px",
+                      borderRadius: "6px",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {log.url}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
 
       </div>
     </div>

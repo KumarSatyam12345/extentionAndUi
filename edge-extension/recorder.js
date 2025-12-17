@@ -79,7 +79,8 @@ function isValidTextInput(target) {
     "number",
     "search",
     "tel",
-    "url"
+    "url",
+    "password"
   ];
 
   return allowedTypes.includes(target.type);
@@ -89,7 +90,11 @@ function commitFinalInput(target) {
   if (!isValidTextInput(target)) return;
 
   const id = target.id || "unknown";
-  const value = target.value;
+  const value =
+    target.type === "password"
+      ? "********"
+      : target.value;
+
 
   if (lastInputValue[id] === value) return;
   lastInputValue[id] = value;
@@ -98,6 +103,8 @@ function commitFinalInput(target) {
     logEvent("input", {
       id,
       value,
+      inputType: target.type,
+      masked: target.type === "password",
       screenshotImage: screenshot
     });
   });

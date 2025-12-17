@@ -1,38 +1,82 @@
 import React, { useState, useEffect, useRef } from "react";
 
+const SENSITIVE_KEYS = [
+  "password",
+  "pass",
+  "pwd",
+  "pin",
+  "otp",
+  "secret",
+  "token",
+  "authorization",
+  "auth"
+];
+
+/* ================= MASK FUNCTION ================= */
+function maskSensitive(data) {
+  if (!data || typeof data !== "object") return data;
+
+  if (Array.isArray(data)) {
+    return data.map(maskSensitive);
+  }
+
+  const masked = {};
+  for (const key in data) {
+    if (SENSITIVE_KEYS.some(k => key.toLowerCase().includes(k))) {
+      masked[key] = "******";
+    } else if (typeof data[key] === "object") {
+      masked[key] = maskSensitive(data[key]);
+    } else {
+      masked[key] = data[key];
+    }
+  }
+  return masked;
+}
+
 export default function UrlOpener() {
   const [url, setUrl] = useState("");
   const [browserName, setBrowserName] = useState("Browser");
   const [extensionAvailable, setExtensionAvailable] = useState(null);
   const repliedRef = useRef(false);
   const timerRef = useRef(null);
-  const [recordedLogs, setRecordedLogs] = useState([]);
-  const [networkLogs, setNetworkLogs] = useState([]);
 
+  const [recordedLogs, setRecordedLogs] = useState([]);
+  const [consoleLogs, setConsoleLogs] = useState([]);
+  const [networkLogs, setNetworkLogs] = useState([]);
+  const [activeTab, setActiveTab] = useState("recorded");
+
+  /* ================= COUNTS ================= */
+  const recordedCount = recordedLogs.length;
+  const consoleCount = consoleLogs.length;
+  const networkCount = networkLogs.length;
+
+  /* ================= LISTEN EXTENSION EVENTS ================= */
   useEffect(() => {
     function handleLogs(event) {
       if (event.data?.type === "SHOW_RECORDED_LOGS_UI") {
-        setRecordedLogs(event.data.payload);
+        setRecordedLogs(event.data.payload || []);
       }
-
+      if (event.data?.type === "SHOW_CONSOLE_LOGS_UI") {
+        setConsoleLogs(event.data.payload || []);
+      }
       if (event.data?.type === "SHOW_NETWORK_LOGS_UI") {
-        setNetworkLogs(event.data.payload);
+        setNetworkLogs(event.data.payload || []);
       }
     }
-
     window.addEventListener("message", handleLogs);
     return () => window.removeEventListener("message", handleLogs);
   }, []);
 
+  /* ================= DETECT BROWSER ================= */
   useEffect(() => {
     const ua = navigator.userAgent;
-
     if (ua.includes("Edg")) setBrowserName("Edge");
     else if (ua.includes("Firefox")) setBrowserName("Firefox");
-    else if (ua.includes("Chrome") && !ua.includes("OPR")) setBrowserName("Chrome");
+    else if (ua.includes("Chrome")) setBrowserName("Chrome");
     else setBrowserName("Unknown");
   }, []);
 
+  /* ================= CHECK EXTENSION ================= */
   useEffect(() => {
     function handleMessage(event) {
       if (event.data === "EXTENSION_INSTALLED") {
@@ -43,14 +87,10 @@ export default function UrlOpener() {
     }
 
     window.addEventListener("message", handleMessage);
+    window.postMessage("CHECK_EXTENSION", "*");
 
-    setTimeout(() => {
-      window.postMessage("CHECK_EXTENSION", "*");
-    }, 100);
     timerRef.current = setTimeout(() => {
-      if (!repliedRef.current) {
-        setExtensionAvailable(false);
-      }
+      if (!repliedRef.current) setExtensionAvailable(false);
     }, 800);
 
     return () => {
@@ -61,61 +101,85 @@ export default function UrlOpener() {
 
   if (extensionAvailable === null) return null;
 
-  const downloadLinks = {
-    Chrome: "http://localhost:8080/api/zip/download/chrome-extension.zip",
-    Edge: "http://localhost:8080/api/zip/download/edge-extension.zip",
-    Firefox: "http://localhost:8080/api/zip/download/firefox-extension.zip",
-  };
-
-  if (!extensionAvailable) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.card}>
-          <h2 style={styles.title}>Extension Not Installed</h2>
-          <p style={{ marginBottom: "20px", fontSize: "16px" }}>
-            To use this feature, please install the extension.
-          </p>
-
-          <button
-            onClick={() => {
-              const downloadUrl = downloadLinks[browserName];
-              if (!downloadUrl) {
-                alert("Unsupported browser");
-                return;
-              }
-              window.location.href = downloadUrl;
-            }}
-            style={styles.button}
-          >
-            Download Extension
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const sendToExtension = () => {
     if (!url.trim()) return;
+    window.postMessage({ type: "OPEN_URL_FROM_UI", payload: url }, "*");
+  };
 
-    window.postMessage(
-      {
-        type: "OPEN_URL_FROM_UI",
-        payload: url,
-      },
-      "*"
+  /* ================= HELPERS ================= */
+  const statusColor = (status, error) => {
+    if (error) return "#dc3545";
+    if (status >= 200 && status < 300) return "#28a745";
+    if (status >= 300 && status < 400) return "#17a2b8";
+    if (status >= 400) return "#dc3545";
+    return "#6c757d";
+  };
+
+  const Section = ({ title, data }) => {
+    if (!data || Object.keys(data).length === 0) return null;
+    return (
+      <details style={{ marginTop: "8px" }}>
+        <summary style={{ cursor: "pointer", fontWeight: "600" }}>
+          {title}
+        </summary>
+        <pre style={styles.pre}>
+          {JSON.stringify(maskSensitive(data), null, 2)}
+        </pre>
+      </details>
     );
   };
 
+  const Empty = ({ text }) => (
+    <div style={{ textAlign: "center", color: "#666", padding: "20px" }}>
+      {text}
+    </div>
+  );
+
+  /* ================= NETWORK LOG UI ================= */
+  const NetworkLogs = () =>
+    networkLogs.length === 0 ? (
+      <Empty text="No network calls captured yet" />
+    ) : (
+      networkLogs.map((log, i) => (
+        <div
+          key={i}
+          style={{
+            ...styles.logCard,
+            borderLeft: `5px solid ${statusColor(log.status, log.error)}`
+          }}
+        >
+          <div style={styles.row}>
+            <strong>{log.method}</strong>
+            <span style={{ color: statusColor(log.status, log.error) }}>
+              {log.status || "FAILED"} {log.statusText || ""}
+            </span>
+          </div>
+
+          <div style={styles.url}>{log.url}</div>
+
+          <div style={styles.meta}>
+            <span>Time: {log.time}</span>
+            {log.duration && <span> | Duration: {log.duration} ms</span>}
+          </div>
+
+          {log.error && <div style={styles.error}>❌ Error: {log.error}</div>}
+
+          <Section title="Request Headers" data={log.requestHeaders} />
+          <Section title="Response Headers" data={log.responseHeaders} />
+        </div>
+      ))
+    );
+
+  /* ================= UI ================= */
   return (
     <div style={styles.container}>
       <div style={styles.card}>
         <h2 style={styles.title}>Open URL using {browserName} Extension</h2>
 
         <input
-          type="text"
           value={url}
-          placeholder="Paste URL here..."
           onChange={(e) => setUrl(e.target.value)}
+          placeholder="Paste URL here"
           style={styles.input}
         />
 
@@ -123,164 +187,157 @@ export default function UrlOpener() {
           Open URL
         </button>
 
-        {recordedLogs.length > 0 && (
-          <div style={{ marginTop: "30px", textAlign: "left" }}>
-            <h3>Recorded Steps:</h3>
+        {/* ===== TABS ===== */}
+        <div style={styles.tabs}>
+          <button
+            onClick={() => setActiveTab("recorded")}
+            style={{
+              ...styles.tabButton,
+              ...(activeTab === "recorded" ? styles.activeTab : {})
+            }}
+          >
+            RECORDED LOGS ({recordedCount})
+          </button>
 
-            <div
-              style={{
-                maxHeight: "300px",
-                overflowY: "auto",
-                padding: "10px",
-                background: "#f4f4f4",
-                borderRadius: "10px",
-              }}
-            >
-              {recordedLogs.map((log, index) => (
-                <div
-                  key={index}
-                  style={{
-                    background: "white",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    marginBottom: "12px",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                  }}
-                >
-                  <div><strong>Type:</strong> {log.type}</div>
-                  <div><strong>Time:</strong> {log.time}</div>
-                  <div><strong>Data:</strong></div>
+          <button
+            onClick={() => setActiveTab("console")}
+            style={{
+              ...styles.tabButton,
+              ...(activeTab === "console" ? styles.activeTab : {})
+            }}
+          >
+            CONSOLE LOGS ({consoleCount})
+          </button>
 
-                  <pre
-                    style={{
-                      background: "#eee",
-                      padding: "8px",
-                      borderRadius: "6px",
-                      fontSize: "13px",
-                    }}
-                  >
+          <button
+            onClick={() => setActiveTab("network")}
+            style={{
+              ...styles.tabButton,
+              ...(activeTab === "network" ? styles.activeTab : {})
+            }}
+          >
+            NETWORK LOGS ({networkCount})
+          </button>
+        </div>
+
+        {/* ===== LOGS ===== */}
+        <div style={styles.logsBox}>
+          {activeTab === "recorded" &&
+            (recordedLogs.length === 0 ? (
+              <Empty text="No recorded steps yet" />
+            ) : (
+              recordedLogs.map((log, i) => (
+                <div key={i} style={styles.logCard}>
+                  <strong>{log.type}</strong>
+                  <div style={styles.meta}>{log.time}</div>
+
+                  <pre style={styles.pre}>
                     {JSON.stringify(
-                      (() => {
-                        const cleanData = { ...log.data };
-                        delete cleanData.screenshotImage; // REMOVE BASE64
-                        return cleanData;
-                      })(),
+                      maskSensitive(
+                        (() => {
+                          const clean = { ...log.data };
+                          delete clean.screenshotImage;
+                          return clean;
+                        })()
+                      ),
                       null,
                       2
                     )}
                   </pre>
 
-
-                  {/* Render Screenshot */}
                   {log.data?.screenshotImage && (
                     <img
                       src={log.data.screenshotImage}
-                      alt="step screenshot"
+                      alt="step"
                       style={{
-                        marginTop: "10px",
                         maxWidth: "100%",
-                        borderRadius: "8px",
-                        border: "1px solid #ccc",
+                        marginTop: "8px",
+                        borderRadius: "6px",
+                        border: "1px solid #ccc"
                       }}
                     />
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {networkLogs.length > 0 && (
-          <div style={{ marginTop: "30px", textAlign: "left" }}>
-            <h3>Network Logs:</h3>
+              ))
+            ))}
 
-            <div
-              style={{
-                maxHeight: "300px",
-                overflowY: "auto",
-                padding: "10px",
-                background: "#f4f4f4",
-                borderRadius: "10px",
-              }}
-            >
-              {networkLogs.map((log, index) => (
-                <div
-                  key={index}
-                  style={{
-                    background: "white",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    marginBottom: "12px",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                  }}
-                >
-                  <div><strong>Method:</strong> {log.method}</div>
-                  <div><strong>Status:</strong> {log.status}</div>
-                  <div><strong>Time:</strong> {log.time}</div>
-
-                  <div><strong>URL:</strong></div>
-                  <pre
-                    style={{
-                      fontSize: "12px",
-                      background: "#eee",
-                      padding: "8px",
-                      borderRadius: "6px",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {log.url}
-                  </pre>
+          {activeTab === "console" &&
+            (consoleLogs.length === 0 ? (
+              <Empty text="No console logs yet" />
+            ) : (
+              consoleLogs.map((log, i) => (
+                <div key={i} style={styles.logCard}>
+                  <strong>{log.level}</strong> –{" "}
+                  {typeof log.message === "object"
+                    ? JSON.stringify(maskSensitive(log.message))
+                    : log.message}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              ))
+            ))}
 
-
+          {activeTab === "network" && <NetworkLogs />}
+        </div>
       </div>
     </div>
   );
 }
 
+/* ================= STYLES ================= */
 const styles = {
   container: {
     height: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    background: "#f0f2f5",
+    background: "#f0f2f5"
   },
   card: {
-    background: "white",
-    padding: "40px",
-    width: "420px",
+    width: "900px",
+    maxWidth: "95vw",
+    background: "#fff",
+    padding: "30px",
     borderRadius: "15px",
-    boxShadow: "0 8px 25px rgba(0,0,0,0.1)",
-    textAlign: "center",
+    boxShadow: "0 8px 25px rgba(0,0,0,0.1)"
   },
-  title: {
-    marginBottom: "25px",
-    fontSize: "22px",
-    color: "#333",
-    fontWeight: "600",
-  },
+  title: { marginBottom: "20px" },
   input: {
     width: "100%",
-    padding: "12px 15px",
-    borderRadius: "10px",
-    border: "1px solid #ccc",
-    fontSize: "15px",
-    outline: "none",
-    marginBottom: "20px",
+    padding: "12px",
+    marginBottom: "10px",
+    borderRadius: "8px",
+    border: "1px solid #ccc"
   },
   button: {
     width: "100%",
     padding: "12px",
-    borderRadius: "10px",
-    border: "none",
     background: "#007bff",
-    color: "white",
-    fontSize: "16px",
-    fontWeight: "600",
-    cursor: "pointer",
+    color: "#fff",
+    border: "none",
+    borderRadius: "8px"
   },
+  tabs: { display: "flex", gap: "10px", marginTop: "20px" },
+  tabButton: { padding: "8px 16px", cursor: "pointer", border: "none" },
+  activeTab: { background: "#007bff", color: "#fff" },
+  logsBox: {
+    marginTop: "15px",
+    maxHeight: "420px",
+    overflowY: "auto"
+  },
+  logCard: {
+    background: "#fff",
+    padding: "12px",
+    marginBottom: "12px",
+    borderRadius: "8px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.08)"
+  },
+  row: { display: "flex", justifyContent: "space-between" },
+  url: { fontSize: "12px", marginTop: "6px", wordBreak: "break-all" },
+  meta: { fontSize: "11px", color: "#666", marginTop: "4px" },
+  error: { marginTop: "6px", color: "#dc3545", fontWeight: "600" },
+  pre: {
+    background: "#f4f4f4",
+    padding: "8px",
+    fontSize: "12px",
+    borderRadius: "6px"
+  }
 };

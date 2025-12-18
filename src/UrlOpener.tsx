@@ -119,7 +119,43 @@ export default function UrlOpener() {
     };
   }, [browserName]);
 
+  /* ================= WAIT ================= */
   if (extensionAvailable === null) return null;
+
+  /* ================= ONLY ADDED LOGIC ================= */
+  if (extensionAvailable === false) {
+    const downloadLinks = {
+      Chrome: "http://localhost:8080/api/zip/download/chrome-extension.zip",
+      Edge: "http://localhost:8080/api/zip/download/edge-extension.zip",
+      Firefox: "http://localhost:8080/api/zip/download/firefox-extension.zip"
+    };
+
+    return (
+      <div style={styles.container}>
+        <div style={{ ...styles.card, width: "420px", textAlign: "center" }}>
+          <h2 style={styles.title}>Extension Not Installed</h2>
+          <p style={{ marginBottom: "20px" }}>
+            To use this feature, please install the browser extension.
+          </p>
+
+          <button
+            style={styles.button}
+            onClick={() => {
+              const url = downloadLinks[browserName];
+              if (!url) {
+                alert("Unsupported browser");
+                return;
+              }
+              window.location.href = url;
+            }}
+          >
+            Download Extension
+          </button>
+        </div>
+      </div>
+    );
+  }
+  /* ================= END OF ADDED LOGIC ================= */
 
   const sendToExtension = () => {
     if (!url.trim()) return;

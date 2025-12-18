@@ -1,12 +1,23 @@
 {
   "manifest_version": 3,
   "name": "URL Opener",
-  "version": "1.3",
-  "permissions": ["tabs", "scripting", "activeTab"],
-  "host_permissions": ["<all_urls>"],
+  "version": "1.4",
+
+  "permissions": [
+    "tabs",
+    "scripting",
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
 
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
 
   "content_scripts": [

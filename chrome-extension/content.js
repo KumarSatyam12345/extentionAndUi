@@ -7,7 +7,7 @@ window.addEventListener("message", (event) => {
     });
   }
 
-  if (event.data.type === "OPEN_URL_FROM_UI") {
+  if (event.data?.type === "OPEN_URL_FROM_UI") {
     chrome.runtime.sendMessage({
       type: "OPEN_URL",
       payload: event.data.payload
@@ -16,12 +16,14 @@ window.addEventListener("message", (event) => {
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
+  if (!msg?.type) return;
+
   if (msg.type === "SHOW_HEADER") {
     addHeader();
   }
 
   if (msg.type === "INJECT_RECORDER_BUTTON") {
-    injectToolbarContainer(); // updated toolbar
+    injectToolbarContainer();
   }
 
   if (msg.type === "RECORDING_DATA_FROM_EXTENSION") {
@@ -30,8 +32,16 @@ chrome.runtime.onMessage.addListener((msg) => {
       "*"
     );
   }
+
+  if (msg.type === "NETWORK_LOGS_FROM_EXTENSION") {
+    window.postMessage(
+      { type: "SHOW_NETWORK_LOGS_UI", payload: msg.payload },
+      "*"
+    );
+  }
 });
 
+// ================== HEADER ==================
 function addHeader() {
   const oldHeader = document.getElementById("ext-header-banner");
   if (oldHeader) oldHeader.remove();
@@ -80,6 +90,7 @@ function addHeader() {
   }, 3000);
 }
 
+// ================== TOOLBAR ==================
 function injectToolbarContainer() {
   if (document.getElementById("___toolbar_container")) return;
 
@@ -102,18 +113,17 @@ function injectToolbarContainer() {
 
   document.body.appendChild(container);
 
-  // ⋮⋮ DRAG HANDLE
+  // Drag handle
   const dragHandle = document.createElement("div");
   dragHandle.innerHTML = `
-      <svg width="16" height="22" viewBox="0 0 24 24" fill="#555">
-        <circle cx="7" cy="5" r="2"/>
-        <circle cx="7" cy="12" r="2"/>
-        <circle cx="7" cy="19" r="2"/>
-        <circle cx="14" cy="5" r="2"/>
-        <circle cx="14" cy="12" r="2"/>
-        <circle cx="14" cy="19" r="2"/>
-      </svg>
-  `;
+    <svg width="16" height="22" viewBox="0 0 24 24" fill="#555">
+      <circle cx="7" cy="5" r="2"/>
+      <circle cx="7" cy="12" r="2"/>
+      <circle cx="7" cy="19" r="2"/>
+      <circle cx="14" cy="5" r="2"/>
+      <circle cx="14" cy="12" r="2"/>
+      <circle cx="14" cy="19" r="2"/>
+    </svg>`;
   dragHandle.style.pointerEvents = "none";
   container.appendChild(dragHandle);
   const recorderWrapper = document.createElement("div");

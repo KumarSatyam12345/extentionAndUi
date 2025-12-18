@@ -33,6 +33,21 @@ function maskSensitive(data) {
   return masked;
 }
 
+/* ================= SAFE HELPERS ================= */
+const normalizeArray = (data) => {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") return [data];
+  return [];
+};
+
+const renderValue = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    return JSON.stringify(maskSensitive(value), null, 2);
+  }
+  return String(value);
+};
+
 export default function UrlOpener() {
   const [url, setUrl] = useState("");
   const [browserName, setBrowserName] = useState("Browser");
@@ -53,16 +68,21 @@ export default function UrlOpener() {
   /* ================= LISTEN EXTENSION EVENTS ================= */
   useEffect(() => {
     function handleLogs(event) {
-      if (event.data?.type === "SHOW_RECORDED_LOGS_UI") {
-        setRecordedLogs(event.data.payload || []);
+      if (!event.data?.type) return;
+
+      if (event.data.type === "SHOW_RECORDED_LOGS_UI") {
+        setRecordedLogs(normalizeArray(event.data.payload));
       }
-      if (event.data?.type === "SHOW_CONSOLE_LOGS_UI") {
-        setConsoleLogs(event.data.payload || []);
+
+      if (event.data.type === "SHOW_CONSOLE_LOGS_UI") {
+        setConsoleLogs(normalizeArray(event.data.payload));
       }
-      if (event.data?.type === "SHOW_NETWORK_LOGS_UI") {
-        setNetworkLogs(event.data.payload || []);
+
+      if (event.data.type === "SHOW_NETWORK_LOGS_UI") {
+        setNetworkLogs(normalizeArray(event.data.payload));
       }
     }
+
     window.addEventListener("message", handleLogs);
     return () => window.removeEventListener("message", handleLogs);
   }, []);
@@ -149,20 +169,27 @@ export default function UrlOpener() {
           }}
         >
           <div style={styles.row}>
-            <strong>{log.method}</strong>
+            <strong>{renderValue(log.method)}</strong>
             <span style={{ color: statusColor(log.status, log.error) }}>
-              {log.status || "FAILED"} {log.statusText || ""}
+              {renderValue(log.status || "FAILED")}{" "}
+              {renderValue(log.statusText)}
             </span>
           </div>
 
-          <div style={styles.url}>{log.url}</div>
+          <div style={styles.url}>{renderValue(log.url)}</div>
 
           <div style={styles.meta}>
-            <span>Time: {log.time}</span>
-            {log.duration && <span> | Duration: {log.duration} ms</span>}
+            <span>Time: {renderValue(log.time)}</span>
+            {log.duration && (
+              <span> | Duration: {renderValue(log.duration)} ms</span>
+            )}
           </div>
 
-          {log.error && <div style={styles.error}>❌ Error: {log.error}</div>}
+          {log.error && (
+            <div style={styles.error}>
+              ❌ Error: {renderValue(log.error)}
+            </div>
+          )}
 
           <Section title="Request Headers" data={log.requestHeaders} />
           <Section title="Response Headers" data={log.responseHeaders} />
@@ -228,8 +255,8 @@ export default function UrlOpener() {
             ) : (
               recordedLogs.map((log, i) => (
                 <div key={i} style={styles.logCard}>
-                  <strong>{log.type}</strong>
-                  <div style={styles.meta}>{log.time}</div>
+                  <strong>{renderValue(log.type)}</strong>
+                  <div style={styles.meta}>{renderValue(log.time)}</div>
 
                   <pre style={styles.pre}>
                     {JSON.stringify(
@@ -267,10 +294,10 @@ export default function UrlOpener() {
             ) : (
               consoleLogs.map((log, i) => (
                 <div key={i} style={styles.logCard}>
-                  <strong>{log.level}</strong> –{" "}
-                  {typeof log.message === "object"
-                    ? JSON.stringify(maskSensitive(log.message))
-                    : log.message}
+                  <strong>{renderValue(log.level)}</strong>
+                  <pre style={styles.pre}>
+                    {renderValue(log.message ?? log.payload ?? log)}
+                  </pre>
                 </div>
               ))
             ))}

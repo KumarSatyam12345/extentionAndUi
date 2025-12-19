@@ -1,8 +1,9 @@
-// ================== NETWORK LOG STORAGE ==================
+// ================== GLOBAL STORAGE ==================
 let networkLogs = [];
+let consoleLogs = [];
 let extensionOpenedTabId = null;
 
-// Temporary maps to correlate request lifecycle
+// ================== NETWORK HELPERS ==================
 const requestStartTime = {};
 const requestRequestHeaders = {};
 const requestRequestBody = {};
@@ -62,25 +63,15 @@ chrome.webRequest.onCompleted.addListener(
       id: details.requestId,
       url: details.url,
       method: details.method,
-
-      // Request
       requestHeaders: requestRequestHeaders[details.requestId] || {},
       requestBody: requestRequestBody[details.requestId] || null,
-
-      // Response
       status: details.statusCode,
       statusText: details.statusCode >= 400 ? "Error" : "OK",
       responseHeaders,
-
-      // Timing
       startTime: new Date(startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
       duration: `${endTime - startTime} ms`,
-
-      // Type
       type: details.type,
-
-      // Error (none here)
       error: null
     });
 
@@ -102,22 +93,14 @@ chrome.webRequest.onErrorOccurred.addListener(
       id: details.requestId,
       url: details.url,
       method: details.method,
-
-      // Request
       requestHeaders: requestRequestHeaders[details.requestId] || {},
       requestBody: requestRequestBody[details.requestId] || null,
-
-      // Response
       status: "FAILED",
       statusText: details.error,
-
-      // Timing
       startTime: new Date(startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
       duration: `${endTime - startTime} ms`,
-
       type: details.type,
-
       error: {
         code: details.error,
         message: details.error
@@ -136,45 +119,98 @@ function cleanup(requestId) {
   delete requestRequestBody[requestId];
 }
 
-// ================== EXISTING MESSAGE HANDLING (UNCHANGED) ==================
+// ================== MESSAGE HANDLER ==================
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
+  // ---------- CHECK EXTENSION ----------
   if (msg.type === "CHECK_EXTENSION") {
     sendResponse({ installed: true });
+    return;
   }
 
+  // ---------- OPEN URL ----------
   if (msg.type === "OPEN_URL") {
+    console.log("[BG] OPEN_URL");
+
     networkLogs = [];
+    consoleLogs = [];
 
     chrome.tabs.create({ url: msg.payload }, (tab) => {
       extensionOpenedTabId = tab.id;
 
       chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
         if (tabId === tab.id && info.status === "complete") {
+
+          console.log("[BG] Injecting pageConsoleRecorder");
+
+          chrome.tabs.sendMessage(tab.id, {
+            type: "INJECT_PAGE_CONSOLE_RECORDER"
+          });
+
+
           chrome.tabs.sendMessage(tab.id, { type: "SHOW_HEADER" });
           chrome.tabs.sendMessage(tab.id, { type: "INJECT_RECORDER_BUTTON" });
+
           chrome.tabs.onUpdated.removeListener(listener);
         }
       });
     });
+
+    return;
   }
 
+  // ---------- CONSOLE LOG FROM PAGE ----------
+  if (msg.type === "CONSOLE_LOG_FROM_PAGE") {
+    consoleLogs.push(msg.payload);
+
+    console.log("[BG] Console log received:", msg.payload);
+
+    // Optional: live update UI
+    chrome.tabs.query({}, (tabs) => {
+      tabs.forEach(tab => {
+        chrome.tabs.sendMessage(tab.id, {
+          type: "CONSOLE_LOGS_FROM_EXTENSION",
+          payload: [msg.payload]
+        });
+      });
+    });
+
+    return;
+  }
+
+  // ---------- RECORDING DATA (IMPORTANT FIX) ----------
   if (msg.type === "RECORDING_DATA") {
-    chrome.tabs.query({}, function (tabs) {
-      tabs.forEach((t) => {
-        chrome.tabs.sendMessage(t.id, {
+    console.log("[BG] RECORDING_DATA");
+    console.log("[BG] consoleLogs:", consoleLogs.length);
+    console.log("[BG] networkLogs:", networkLogs.length);
+
+    chrome.tabs.query({}, (tabs) => {
+      tabs.forEach(tab => {
+
+        // Recorded steps
+        chrome.tabs.sendMessage(tab.id, {
           type: "RECORDING_DATA_FROM_EXTENSION",
           payload: msg.payload
         });
 
-        chrome.tabs.sendMessage(t.id, {
+        // Console logs (FULL)
+        chrome.tabs.sendMessage(tab.id, {
+          type: "CONSOLE_LOGS_FROM_EXTENSION",
+          payload: consoleLogs
+        });
+
+        // Network logs (FULL)
+        chrome.tabs.sendMessage(tab.id, {
           type: "NETWORK_LOGS_FROM_EXTENSION",
           payload: networkLogs
         });
       });
     });
+
+    return;
   }
 
+  // ---------- SCREENSHOT ----------
   if (msg.type === "CAPTURE_FULL") {
     chrome.tabs.captureVisibleTab({ format: "png" }, (image) => {
       sendResponse({ image });

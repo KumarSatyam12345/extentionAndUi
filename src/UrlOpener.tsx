@@ -29,7 +29,12 @@ export default function UrlOpener() {
     function handleLogs(event: MessageEvent) {
       if (!event.data?.type) return;
       if (event.data.type === "SHOW_RECORDED_LOGS_UI") setRecordedLogs(normalizeArray(event.data.payload));
-      if (event.data.type === "SHOW_CONSOLE_LOGS_UI") setConsoleLogs(normalizeArray(event.data.payload));
+      if (event.data.type === "SHOW_CONSOLE_LOGS_UI") {
+        setConsoleLogs(prev => [
+          ...prev,
+          ...normalizeArray(event.data.payload)
+        ]);
+      }
       if (event.data.type === "SHOW_NETWORK_LOGS_UI") setNetworkLogs(normalizeArray(event.data.payload));
     }
     window.addEventListener("message", handleLogs);
@@ -96,9 +101,31 @@ export default function UrlOpener() {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h2 style={styles.title}>Open URL using {browserName} Extension</h2>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste URL here" style={styles.input} />
-        <button onClick={sendToExtension} style={styles.button}>Open URL</button>
+        <h2 style={styles.title}>
+          Open URL using {browserName} Extension
+        </h2>
+
+        <input
+          value={url}
+          onChange={(e) => {
+            console.log("[UI] URL input changed:", e.target.value);
+            console.error("[UI] Open URL button clicked");
+            setUrl(e.target.value);
+          }}
+          placeholder="Paste URL here"
+          style={styles.input}
+        />
+
+        <button
+          onClick={() => {
+            console.log("[UI] Open URL button clicked");
+            console.log("[UI] URL value:", url);
+            sendToExtension();
+          }}
+          style={styles.button}
+        >
+          Open URL
+        </button>
 
         <Tabs activeTab={activeTab} setActiveTab={setActiveTab} recordedCount={recordedCount} consoleCount={consoleCount} networkCount={networkCount} styles={styles} />
 

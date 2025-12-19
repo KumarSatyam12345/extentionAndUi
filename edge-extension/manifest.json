@@ -26,5 +26,12 @@
       "js": ["content.js", "recorder.js"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["pageConsoleRecorder.js"],
+      "matches": ["<all_urls>"]
+    }
   ]
+
 }

@@ -24,14 +24,15 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js", "recorder.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
+
   "web_accessible_resources": [
     {
       "resources": ["pageConsoleRecorder.js"],
       "matches": ["<all_urls>"]
     }
   ]
-
 }

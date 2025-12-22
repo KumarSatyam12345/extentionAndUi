@@ -1,7 +1,7 @@
+// ================= UI → EXTENSION =================
 window.addEventListener("message", (event) => {
   if (event.source !== window) return;
 
-  // UI checking extension
   if (event.data === "CHECK_EXTENSION") {
     chrome.runtime.sendMessage({ type: "CHECK_EXTENSION" }, (res) => {
       if (res?.installed) {
@@ -10,21 +10,16 @@ window.addEventListener("message", (event) => {
     });
   }
 
-  // UI asking to open URL
   if (event.data?.type === "OPEN_URL_FROM_UI") {
     chrome.runtime.sendMessage({
       type: "OPEN_URL",
       payload: event.data.payload
     });
   }
-});
-// content.js
-window.addEventListener("message", (event) => {
-  if (event.source !== window) return;
-  if (!event.data) return;
 
+  // PAGE → EXTENSION (console)
   if (
-    event.data.source === "EXT_PAGE" &&
+    event.data?.source === "EXT_PAGE" &&
     event.data.type === "CONSOLE_LOG"
   ) {
     chrome.runtime.sendMessage({
@@ -33,8 +28,6 @@ window.addEventListener("message", (event) => {
     });
   }
 });
-
-
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (!msg?.type) return;
@@ -47,15 +40,15 @@ chrome.runtime.onMessage.addListener((msg) => {
     injectToolbarContainer();
   }
 
+  if (msg.type === "INJECT_PAGE_CONSOLE_RECORDER") {
+      injectPageConsoleRecorder();
+  }
+
   if (msg.type === "RECORDING_DATA_FROM_EXTENSION") {
     window.postMessage(
       { type: "SHOW_RECORDED_LOGS_UI", payload: msg.payload },
       "*"
     );
-  }
-
-  if (msg.type === "INJECT_PAGE_CONSOLE_RECORDER") {
-      injectPageConsoleRecorder();
   }
 
   if (msg.type === "NETWORK_LOGS_FROM_EXTENSION") {
@@ -64,11 +57,12 @@ chrome.runtime.onMessage.addListener((msg) => {
       "*"
     );
   }
+
   if (msg.type === "CONSOLE_LOGS_FROM_EXTENSION") {
-      window.postMessage(
-        { type: "SHOW_CONSOLE_LOGS_UI", payload: msg.payload },
-        "*"
-      );
+      window.postMessage({
+        type: "SHOW_CONSOLE_LOGS_UI",
+        payload: msg.payload
+      }, "*");
     }
 });
 
@@ -307,15 +301,14 @@ function injectToolbarContainer() {
     container.style.cursor = "grab";
   });
 }
+
 function injectPageConsoleRecorder() {
   if (document.getElementById("ext-page-console-recorder")) return;
 
   const script = document.createElement("script");
   script.id = "ext-page-console-recorder";
   script.src = chrome.runtime.getURL("pageConsoleRecorder.js");
-  script.type = "text/javascript";
   script.onload = () => script.remove();
 
   (document.head || document.documentElement).appendChild(script);
 }
-

@@ -1,24 +1,42 @@
+var EXT = globalThis.EXT || (globalThis.EXT =
+  typeof browser !== "undefined" ? browser : chrome
+);
+
+// ================= UI → EXTENSION =================
 window.addEventListener("message", (event) => {
+  if (event.source !== window) return;
+
   if (event.data === "CHECK_EXTENSION") {
-    try {
-      browser.runtime.sendMessage({ type: "CHECK_EXTENSION" }).then((res) => {
-        if (res?.installed) {
-          window.postMessage("EXTENSION_INSTALLED", "*");
-        }
-      }).catch((err) => {});
-    } catch (err) {}
+    EXT.runtime.sendMessage({ type: "CHECK_EXTENSION" }, (res) => {
+      if (res?.installed) {
+        window.postMessage("EXTENSION_INSTALLED", "*");
+      }
+    });
   }
 
   if (event.data?.type === "OPEN_URL_FROM_UI") {
-    try {
-      browser.runtime.sendMessage({
-        type: "OPEN_URL",
-        payload: event.data.payload
-      }).catch((err) => {});
-    } catch (err) {}
+    EXT.runtime.sendMessage({
+      type: "OPEN_URL",
+      payload: event.data.payload
+    });
+  }
+
+  // PAGE → EXTENSION (console)
+  if (
+    event.data?.source === "EXT_PAGE" &&
+    event.data.type === "CONSOLE_LOG"
+  ) {
+    EXT.runtime.sendMessage({
+      type: "CONSOLE_LOG_FROM_PAGE",
+      payload: event.data.payload
+    });
   }
 });
-browser.runtime.onMessage.addListener((msg) => {
+
+// ================= EXTENSION → UI =================
+EXT.runtime.onMessage.addListener((msg) => {
+  if (!msg?.type) return;
+
   if (msg.type === "SHOW_HEADER") {
     addHeader();
   }
@@ -27,14 +45,36 @@ browser.runtime.onMessage.addListener((msg) => {
     injectToolbarContainer();
   }
 
+  if (msg.type === "INJECT_PAGE_CONSOLE_RECORDER") {
+    injectPageConsoleRecorder();
+  }
+
   if (msg.type === "RECORDING_DATA_FROM_EXTENSION") {
     window.postMessage(
       { type: "SHOW_RECORDED_LOGS_UI", payload: msg.payload },
       "*"
     );
   }
+
+  if (msg.type === "NETWORK_LOGS_FROM_EXTENSION") {
+    window.postMessage(
+      { type: "SHOW_NETWORK_LOGS_UI", payload: msg.payload },
+      "*"
+    );
+  }
+
+  if (msg.type === "CONSOLE_LOGS_FROM_EXTENSION") {
+    window.postMessage(
+      {
+        type: "SHOW_CONSOLE_LOGS_UI",
+        payload: msg.payload
+      },
+      "*"
+    );
+  }
 });
 
+// ================== HEADER ==================
 function addHeader() {
   const oldHeader = document.getElementById("ext-header-banner");
   if (oldHeader) oldHeader.remove();
@@ -83,6 +123,7 @@ function addHeader() {
   }, 3000);
 }
 
+// ================== TOOLBAR ==================
 function injectToolbarContainer() {
   if (document.getElementById("___toolbar_container")) return;
 
@@ -105,20 +146,20 @@ function injectToolbarContainer() {
 
   document.body.appendChild(container);
 
-  // ⋮⋮ DRAG HANDLE
+  // Drag handle
   const dragHandle = document.createElement("div");
   dragHandle.innerHTML = `
-      <svg width="16" height="22" viewBox="0 0 24 24" fill="#555">
-        <circle cx="7" cy="5" r="2"/>
-        <circle cx="7" cy="12" r="2"/>
-        <circle cx="7" cy="19" r="2"/>
-        <circle cx="14" cy="5" r="2"/>
-        <circle cx="14" cy="12" r="2"/>
-        <circle cx="14" cy="19" r="2"/>
-      </svg>
-  `;
+    <svg width="16" height="22" viewBox="0 0 24 24" fill="#555">
+      <circle cx="7" cy="5" r="2"/>
+      <circle cx="7" cy="12" r="2"/>
+      <circle cx="7" cy="19" r="2"/>
+      <circle cx="14" cy="5" r="2"/>
+      <circle cx="14" cy="12" r="2"/>
+      <circle cx="14" cy="19" r="2"/>
+    </svg>`;
   dragHandle.style.pointerEvents = "none";
   container.appendChild(dragHandle);
+
   const recorderWrapper = document.createElement("div");
   recorderWrapper.style.position = "relative";
   recorderWrapper.style.display = "flex";
@@ -143,7 +184,6 @@ function injectToolbarContainer() {
   recInner.style.background = "#ff1a28";
   recorderBtn.appendChild(recInner);
 
-  // LABEL
   const recLabel = document.createElement("div");
   recLabel.innerText = "Record";
   recLabel.style.position = "absolute";
@@ -170,18 +210,18 @@ function injectToolbarContainer() {
   recorderBtn.onclick = toggleRecording;
 
   function toggleRecording() {
-    if (recorderBtn.dataset.state !== "recording") {
-      recorderBtn.dataset.state = "recording";
-      recInner.style.background = "#34c759";
-      recInner.style.borderRadius = "4px";
-      recLabel.innerText = "Recording...";
-      window.dispatchEvent(new CustomEvent("START_RECORDING"));
-    } else {
+    if (recorderBtn.dataset.state === "recording") {
       recorderBtn.dataset.state = "stopped";
       recInner.style.background = "#ff1a28";
       recInner.style.borderRadius = "5px";
       recLabel.innerText = "Record";
       window.dispatchEvent(new CustomEvent("STOP_RECORDING"));
+    } else {
+      recorderBtn.dataset.state = "recording";
+      recInner.style.background = "#34c759";
+      recInner.style.borderRadius = "4px";
+      recLabel.innerText = "Recording...";
+      window.dispatchEvent(new CustomEvent("START_RECORDING"));
     }
   }
 
@@ -204,10 +244,11 @@ function injectToolbarContainer() {
   replayBtn.style.transition = "transform 0.15s ease";
 
   replayBtn.innerHTML = `
-      <svg width="20" height="20" fill="white" viewBox="0 0 24 24" style="pointer-events:none;">
-        <path d="M12 5V2L5 8l7 6V9a5 5 0 1 1-5 5H5c0 4 3 7 7 7s7-3 7-7-3-7-7-7z"/>
-      </svg>
+    <svg width="20" height="20" fill="white" viewBox="0 0 24 24" style="pointer-events:none;">
+      <path d="M12 5V2L5 8l7 6V9a5 5 0 1 1-5 5H5c0 4 3 7 7 7s7-3 7-7-3-7-7-7z"/>
+    </svg>
   `;
+
   const replayLabel = document.createElement("div");
   replayLabel.innerText = "Replay";
   replayLabel.style.position = "absolute";
@@ -234,6 +275,8 @@ function injectToolbarContainer() {
   replayBtn.onclick = () => {
     window.dispatchEvent(new CustomEvent("REPLAY_CLICKED"));
   };
+
+  // ================= DRAG =================
   let isDown = false;
   let offsetX = 0;
   let offsetY = 0;
@@ -263,4 +306,16 @@ function injectToolbarContainer() {
     isDown = false;
     container.style.cursor = "grab";
   });
+}
+
+// ================== PAGE CONSOLE RECORDER ==================
+function injectPageConsoleRecorder() {
+  if (document.getElementById("ext-page-console-recorder")) return;
+
+  const script = document.createElement("script");
+  script.id = "ext-page-console-recorder";
+  script.src = EXT.runtime.getURL("pageConsoleRecorder.js");
+  script.onload = () => script.remove();
+
+  (document.head || document.documentElement).appendChild(script);
 }

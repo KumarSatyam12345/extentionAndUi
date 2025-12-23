@@ -1,10 +1,16 @@
-const EXT = typeof browser !== "undefined" ? browser : chrome;
+var EXT = globalThis.EXT || (globalThis.EXT =
+  typeof browser !== "undefined" ? browser : chrome
+);
 
 let isRecording = false;
 let logs = [];
+
+// Highlight Configuration
 const HIGHLIGHT_COLOR = "rgba(255, 255, 0, 0.3)";
 const BORDER_COLOR = "yellow";
 const BORDER_WIDTH = 4;
+
+// --------------------------------------
 function requestScreenshot(callback) {
   EXT.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
 }
@@ -33,6 +39,7 @@ function cropElementFromScreenshot(fullImgSrc, rect, callback) {
       rect.width * dpr,
       rect.height * dpr
     );
+
     ctx.fillStyle = HIGHLIGHT_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -44,43 +51,73 @@ function cropElementFromScreenshot(fullImgSrc, rect, callback) {
   };
 }
 
-function captureElement(target, done) {
+// 🔥 STABLE CAPTURE (INPUT + CLICK)
+function captureElementStable(target, done) {
   if (!target) return done(null);
 
   const rect = target.getBoundingClientRect();
 
-  requestScreenshot((resp) => {
-    if (!resp?.image) return done(null);
-    cropElementFromScreenshot(resp.image, rect, done);
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      requestScreenshot((resp) => {
+        if (!resp?.image) return done(null);
+        cropElementFromScreenshot(resp.image, rect, done);
+      });
+    }, 40); // Firefox + Edge safe delay
   });
 }
 
+// --------------------------------------
 let lastInputValue = {};
 
+// ✅ Only real text inputs
+function isValidTextInput(target) {
+  if (!target || target.tagName !== "INPUT") return false;
+
+  const allowedTypes = [
+    "text",
+    "email",
+    "number",
+    "search",
+    "tel",
+    "url",
+    "password"
+  ];
+
+  return allowedTypes.includes(target.type);
+}
+
 function commitFinalInput(target) {
-  if (!target || target.tagName !== "INPUT") return;
-  if (target.type === "password") return;
+  if (!isValidTextInput(target)) return;
 
   const id = target.id || "unknown";
-  const value = target.value;
+  const value =
+    target.type === "password"
+      ? "********"
+      : target.value;
 
   if (lastInputValue[id] === value) return;
   lastInputValue[id] = value;
 
-  captureElement(target, (screenshot) => {
+  captureElementStable(target, (screenshot) => {
     logEvent("input", {
       id,
       value,
+      inputType: target.type,
+      masked: target.type === "password",
       screenshotImage: screenshot
     });
   });
 }
 
+// --------------------------------------
 function logEvent(type, data) {
   if (!isRecording) return;
   logs.push({ time: new Date().toISOString(), type, data });
 }
 
+// --------------------------------------
+// CLICK — BEFORE NAVIGATION
 globalThis.addEventListener(
   "mousedown",
   (e) => {
@@ -90,7 +127,7 @@ globalThis.addEventListener(
 
     const target = e.target;
 
-    captureElement(target, (screenshot) => {
+    captureElementStable(target, (screenshot) => {
       logEvent("click", {
         text: target.innerText,
         id: target.id,
@@ -102,7 +139,13 @@ globalThis.addEventListener(
   true
 );
 
-globalThis.addEventListener("blur", (e) => commitFinalInput(e.target), true);
+// INPUT BLUR
+globalThis.addEventListener("blur", (e) => {
+  commitFinalInput(e.target);
+}, true);
+
+// --------------------------------------
+// Scroll (THROTTLED)
 let lastScrollTime = 0;
 const SCROLL_THROTTLE_MS = 200;
 
@@ -114,10 +157,13 @@ window.addEventListener("scroll", () => {
   logEvent("scroll", { position: window.scrollY });
 });
 
+// Tab navigation
 globalThis.addEventListener("keydown", (e) => {
   if (e.key === "Tab") commitFinalInput(document.activeElement);
 });
 
+// --------------------------------------
+// Start / Stop Recording
 globalThis.addEventListener("START_RECORDING", () => {
   logs = [];
   lastInputValue = {};

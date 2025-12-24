@@ -1,70 +1,105 @@
-// ================= UI → EXTENSION =================
-window.addEventListener("message", (event) => {
+var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
+window.EXT = EXT;
+
+function initExtensionUI() {
+  addHeader();
+  injectToolbarContainer();
+  injectPageConsoleRecorder();
+
+  // ✅ IMPORTANT FIX: always request logs after UI init
+  EXT.runtime.sendMessage({ type: "REQUEST_LOGS" });
+}
+
+/* ================= PAGE → EXTENSION ================= */
+window.addEventListener("message", event => {
   if (event.source !== window) return;
 
+  // Check extension
   if (event.data === "CHECK_EXTENSION") {
-    chrome.runtime.sendMessage({ type: "CHECK_EXTENSION" }, (res) => {
+    EXT.runtime.sendMessage({ type: "CHECK_EXTENSION" }, res => {
       if (res?.installed) {
         window.postMessage("EXTENSION_INSTALLED", "*");
       }
     });
   }
 
+  // Open URL
   if (event.data?.type === "OPEN_URL_FROM_UI") {
-    chrome.runtime.sendMessage({
+    EXT.runtime.sendMessage({
       type: "OPEN_URL",
       payload: event.data.payload
     });
   }
 
-  // PAGE → EXTENSION (console)
+  // Console logs from page script
   if (
     event.data?.source === "EXT_PAGE" &&
     event.data.type === "CONSOLE_LOG"
   ) {
-    chrome.runtime.sendMessage({
+    EXT.runtime.sendMessage({
       type: "CONSOLE_LOG_FROM_PAGE",
       payload: event.data.payload
     });
   }
 });
 
-chrome.runtime.onMessage.addListener((msg) => {
+/* ================= EXTENSION → PAGE ================= */
+EXT.runtime.onMessage.addListener((msg) => {
   if (!msg?.type) return;
 
-  if (msg.type === "SHOW_HEADER") {
-    addHeader();
-  }
+  switch (msg.type) {
 
-  if (msg.type === "INJECT_RECORDER_BUTTON") {
-    injectToolbarContainer();
-  }
+    case "INIT_EXTENSION_UI":
+      initExtensionUI();
+      break;
 
-  if (msg.type === "INJECT_PAGE_CONSOLE_RECORDER") {
+    case "SHOW_HEADER":
+      addHeader();
+      break;
+
+    case "INJECT_RECORDER_BUTTON":
+      injectToolbarContainer();
+      break;
+
+    case "INJECT_PAGE_CONSOLE_RECORDER":
       injectPageConsoleRecorder();
-  }
+      break;
 
-  if (msg.type === "RECORDING_DATA_FROM_EXTENSION") {
-    window.postMessage(
-      { type: "SHOW_RECORDED_LOGS_UI", payload: msg.payload },
-      "*"
-    );
-  }
+    // ✅ REQUIRED: console logs from background
+    case "CONSOLE_LOGS_FROM_EXTENSION":
+      window.postMessage(
+        {
+          type: "SHOW_CONSOLE_LOGS_UI",
+          payload: msg.payload
+        },
+        "*"
+      );
+      break;
 
-  if (msg.type === "NETWORK_LOGS_FROM_EXTENSION") {
-    window.postMessage(
-      { type: "SHOW_NETWORK_LOGS_UI", payload: msg.payload },
-      "*"
-    );
-  }
+    // ✅ REQUIRED: network logs from background
+    case "NETWORK_LOGS_FROM_EXTENSION":
+      window.postMessage(
+        {
+          type: "SHOW_NETWORK_LOGS_UI",
+          payload: msg.payload
+        },
+        "*"
+      );
+      break;
 
-  if (msg.type === "CONSOLE_LOGS_FROM_EXTENSION") {
-      window.postMessage({
-        type: "SHOW_CONSOLE_LOGS_UI",
-        payload: msg.payload
-      }, "*");
-    }
+    // ✅ OPTIONAL but recommended (recorded steps)
+    case "RECORDING_DATA_FROM_EXTENSION":
+      window.postMessage(
+        {
+          type: "SHOW_RECORDED_LOGS_UI",
+          payload: msg.payload
+        },
+        "*"
+      );
+      break;
+  }
 });
+
 
 // ================== HEADER ==================
 function addHeader() {

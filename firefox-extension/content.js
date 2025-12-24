@@ -1,19 +1,29 @@
-var EXT = globalThis.EXT || (globalThis.EXT =
-  typeof browser !== "undefined" ? browser : chrome
-);
+var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
+window.EXT = EXT;
 
-// ================= UI → EXTENSION =================
-window.addEventListener("message", (event) => {
+function initExtensionUI() {
+  addHeader();
+  injectToolbarContainer();
+  injectPageConsoleRecorder();
+
+  // ✅ IMPORTANT FIX: always request logs after UI init
+  EXT.runtime.sendMessage({ type: "REQUEST_LOGS" });
+}
+
+/* ================= PAGE → EXTENSION ================= */
+window.addEventListener("message", event => {
   if (event.source !== window) return;
 
+  // Check extension
   if (event.data === "CHECK_EXTENSION") {
-    EXT.runtime.sendMessage({ type: "CHECK_EXTENSION" }, (res) => {
+    EXT.runtime.sendMessage({ type: "CHECK_EXTENSION" }, res => {
       if (res?.installed) {
         window.postMessage("EXTENSION_INSTALLED", "*");
       }
     });
   }
 
+  // Open URL
   if (event.data?.type === "OPEN_URL_FROM_UI") {
     EXT.runtime.sendMessage({
       type: "OPEN_URL",
@@ -21,7 +31,7 @@ window.addEventListener("message", (event) => {
     });
   }
 
-  // PAGE → EXTENSION (console)
+  // Console logs from page script
   if (
     event.data?.source === "EXT_PAGE" &&
     event.data.type === "CONSOLE_LOG"
@@ -33,46 +43,63 @@ window.addEventListener("message", (event) => {
   }
 });
 
-// ================= EXTENSION → UI =================
+/* ================= EXTENSION → PAGE ================= */
 EXT.runtime.onMessage.addListener((msg) => {
   if (!msg?.type) return;
 
-  if (msg.type === "SHOW_HEADER") {
-    addHeader();
-  }
+  switch (msg.type) {
 
-  if (msg.type === "INJECT_RECORDER_BUTTON") {
-    injectToolbarContainer();
-  }
+    case "INIT_EXTENSION_UI":
+      initExtensionUI();
+      break;
 
-  if (msg.type === "INJECT_PAGE_CONSOLE_RECORDER") {
-    injectPageConsoleRecorder();
-  }
+    case "SHOW_HEADER":
+      addHeader();
+      break;
 
-  if (msg.type === "RECORDING_DATA_FROM_EXTENSION") {
-    window.postMessage(
-      { type: "SHOW_RECORDED_LOGS_UI", payload: msg.payload },
-      "*"
-    );
-  }
+    case "INJECT_RECORDER_BUTTON":
+      injectToolbarContainer();
+      break;
 
-  if (msg.type === "NETWORK_LOGS_FROM_EXTENSION") {
-    window.postMessage(
-      { type: "SHOW_NETWORK_LOGS_UI", payload: msg.payload },
-      "*"
-    );
-  }
+    case "INJECT_PAGE_CONSOLE_RECORDER":
+      injectPageConsoleRecorder();
+      break;
 
-  if (msg.type === "CONSOLE_LOGS_FROM_EXTENSION") {
-    window.postMessage(
-      {
-        type: "SHOW_CONSOLE_LOGS_UI",
-        payload: msg.payload
-      },
-      "*"
-    );
+    // ✅ REQUIRED: console logs from background
+    case "CONSOLE_LOGS_FROM_EXTENSION":
+      window.postMessage(
+        {
+          type: "SHOW_CONSOLE_LOGS_UI",
+          payload: msg.payload
+        },
+        "*"
+      );
+      break;
+
+    // ✅ REQUIRED: network logs from background
+    case "NETWORK_LOGS_FROM_EXTENSION":
+      window.postMessage(
+        {
+          type: "SHOW_NETWORK_LOGS_UI",
+          payload: msg.payload
+        },
+        "*"
+      );
+      break;
+
+    // ✅ OPTIONAL but recommended (recorded steps)
+    case "RECORDING_DATA_FROM_EXTENSION":
+      window.postMessage(
+        {
+          type: "SHOW_RECORDED_LOGS_UI",
+          payload: msg.payload
+        },
+        "*"
+      );
+      break;
   }
 });
+
 
 // ================== HEADER ==================
 function addHeader() {
@@ -159,7 +186,6 @@ function injectToolbarContainer() {
     </svg>`;
   dragHandle.style.pointerEvents = "none";
   container.appendChild(dragHandle);
-
   const recorderWrapper = document.createElement("div");
   recorderWrapper.style.position = "relative";
   recorderWrapper.style.display = "flex";
@@ -184,6 +210,7 @@ function injectToolbarContainer() {
   recInner.style.background = "#ff1a28";
   recorderBtn.appendChild(recInner);
 
+  // LABEL
   const recLabel = document.createElement("div");
   recLabel.innerText = "Record";
   recLabel.style.position = "absolute";
@@ -224,7 +251,6 @@ function injectToolbarContainer() {
       window.dispatchEvent(new CustomEvent("START_RECORDING"));
     }
   }
-
   const replayWrapper = document.createElement("div");
   replayWrapper.style.position = "relative";
   replayWrapper.style.display = "flex";
@@ -244,11 +270,12 @@ function injectToolbarContainer() {
   replayBtn.style.transition = "transform 0.15s ease";
 
   replayBtn.innerHTML = `
-    <svg width="20" height="20" fill="white" viewBox="0 0 24 24" style="pointer-events:none;">
-      <path d="M12 5V2L5 8l7 6V9a5 5 0 1 1-5 5H5c0 4 3 7 7 7s7-3 7-7-3-7-7-7z"/>
-    </svg>
+      <svg width="20" height="20" fill="white" viewBox="0 0 24 24" style="pointer-events:none;">
+        <path d="M12 5V2L5 8l7 6V9a5 5 0 1 1-5 5H5c0 4 3 7 7 7s7-3 7-7-3-7-7-7z"/>
+      </svg>
   `;
 
+  // LABEL
   const replayLabel = document.createElement("div");
   replayLabel.innerText = "Replay";
   replayLabel.style.position = "absolute";
@@ -276,7 +303,9 @@ function injectToolbarContainer() {
     window.dispatchEvent(new CustomEvent("REPLAY_CLICKED"));
   };
 
-  // ================= DRAG =================
+  // ====================================================
+  // DRAG LOGIC
+  // ====================================================
   let isDown = false;
   let offsetX = 0;
   let offsetY = 0;
@@ -308,13 +337,12 @@ function injectToolbarContainer() {
   });
 }
 
-// ================== PAGE CONSOLE RECORDER ==================
 function injectPageConsoleRecorder() {
   if (document.getElementById("ext-page-console-recorder")) return;
 
   const script = document.createElement("script");
   script.id = "ext-page-console-recorder";
-  script.src = EXT.runtime.getURL("pageConsoleRecorder.js");
+  script.src = chrome.runtime.getURL("pageConsoleRecorder.js");
   script.onload = () => script.remove();
 
   (document.head || document.documentElement).appendChild(script);

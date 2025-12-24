@@ -1,6 +1,6 @@
-var EXT = globalThis.EXT || (globalThis.EXT =
-  typeof browser !== "undefined" ? browser : chrome
-);
+var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
+window.EXT = EXT;
+
 
 let isRecording = false;
 let logs = [];
@@ -63,7 +63,7 @@ function captureElementStable(target, done) {
         if (!resp?.image) return done(null);
         cropElementFromScreenshot(resp.image, rect, done);
       });
-    }, 40); // Firefox + Edge safe delay
+    }, 40); // Edge-safe delay
   });
 }
 
@@ -95,6 +95,7 @@ function commitFinalInput(target) {
     target.type === "password"
       ? "********"
       : target.value;
+
 
   if (lastInputValue[id] === value) return;
   lastInputValue[id] = value;
@@ -136,7 +137,7 @@ globalThis.addEventListener(
       });
     });
   },
-  true
+  true // capture phase
 );
 
 // INPUT BLUR
@@ -145,7 +146,7 @@ globalThis.addEventListener("blur", (e) => {
 }, true);
 
 // --------------------------------------
-// Scroll (THROTTLED)
+// Scroll (THROTTLED ONLY)
 let lastScrollTime = 0;
 const SCROLL_THROTTLE_MS = 200;
 

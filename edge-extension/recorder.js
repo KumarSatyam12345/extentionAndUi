@@ -1,5 +1,6 @@
-// ============ EDGE / UNIVERSAL (Chromium) ============
-const EXT = typeof browser !== "undefined" ? browser : chrome;
+var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
+window.EXT = EXT;
+
 
 let isRecording = false;
 let logs = [];

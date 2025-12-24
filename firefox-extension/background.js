@@ -1,10 +1,11 @@
-// ================== CROSS-BROWSER API ==================
 const EXT = typeof browser !== "undefined" ? browser : chrome;
 
 // ================== GLOBAL STORAGE ==================
 let networkLogs = [];
 let consoleLogs = [];
-let extensionOpenedTabId = null;
+
+// 🔹 NEW: support multiple tabs
+const extensionOpenedTabs = new Set();
 
 // ================== NETWORK HELPERS ==================
 const requestStartTime = {};
@@ -14,7 +15,7 @@ const requestRequestBody = {};
 // ================== REQUEST START ==================
 EXT.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.tabId !== extensionOpenedTabId) return;
+    if (!extensionOpenedTabs.has(details.tabId)) return;
 
     requestStartTime[details.requestId] = Date.now();
 
@@ -25,7 +26,8 @@ EXT.webRequest.onBeforeRequest.addListener(
             ? new TextDecoder().decode(details.requestBody.raw[0].bytes)
             : details.requestBody;
       } catch {
-        requestRequestBody[details.requestId] = "[Unable to read request body]";
+        requestRequestBody[details.requestId] =
+          "[Unable to read request body]";
       }
     }
   },
@@ -36,7 +38,7 @@ EXT.webRequest.onBeforeRequest.addListener(
 // ================== REQUEST HEADERS ==================
 EXT.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
-    if (details.tabId !== extensionOpenedTabId) return;
+    if (!extensionOpenedTabs.has(details.tabId)) return;
 
     const headers = {};
     details.requestHeaders?.forEach(h => {
@@ -52,7 +54,7 @@ EXT.webRequest.onBeforeSendHeaders.addListener(
 // ================== RESPONSE SUCCESS ==================
 EXT.webRequest.onCompleted.addListener(
   (details) => {
-    if (details.tabId !== extensionOpenedTabId) return;
+    if (!extensionOpenedTabs.has(details.tabId)) return;
 
     const endTime = Date.now();
     const startTime = requestStartTime[details.requestId] || endTime;
@@ -87,7 +89,7 @@ EXT.webRequest.onCompleted.addListener(
 // ================== RESPONSE FAILURE ==================
 EXT.webRequest.onErrorOccurred.addListener(
   (details) => {
-    if (details.tabId !== extensionOpenedTabId) return;
+    if (!extensionOpenedTabs.has(details.tabId)) return;
 
     const endTime = Date.now();
     const startTime = requestStartTime[details.requestId] || endTime;
@@ -122,13 +124,35 @@ function cleanup(requestId) {
   delete requestRequestBody[requestId];
 }
 
+// ================== TAB UPDATE (NEW FEATURE) ==================
+EXT.tabs.onUpdated.addListener((tabId, info) => {
+  if (
+    info.status === "complete" &&
+    extensionOpenedTabs.has(tabId)
+  ) {
+    console.log("[BG] Re-inject UI after refresh:", tabId);
+
+    EXT.tabs.sendMessage(tabId, {
+      type: "INJECT_PAGE_CONSOLE_RECORDER"
+    });
+
+    EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
+    EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
+  }
+});
+
+// ================== TAB CLOSE CLEANUP ==================
+EXT.tabs.onRemoved.addListener(tabId => {
+  extensionOpenedTabs.delete(tabId);
+});
+
 // ================== MESSAGE HANDLER ==================
 EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ---------- CHECK EXTENSION ----------
   if (msg.type === "CHECK_EXTENSION") {
     sendResponse({ installed: true });
-    return;
+    return true;
   }
 
   // ---------- OPEN URL ----------
@@ -139,23 +163,10 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     consoleLogs = [];
 
     EXT.tabs.create({ url: msg.payload }, (tab) => {
-      extensionOpenedTabId = tab.id;
+      if (!tab?.id) return;
 
-      EXT.tabs.onUpdated.addListener(function listener(tabId, info) {
-        if (tabId === tab.id && info.status === "complete") {
-
-          console.log("[BG] Injecting pageConsoleRecorder");
-
-          EXT.tabs.sendMessage(tab.id, {
-            type: "INJECT_PAGE_CONSOLE_RECORDER"
-          });
-
-          EXT.tabs.sendMessage(tab.id, { type: "SHOW_HEADER" });
-          EXT.tabs.sendMessage(tab.id, { type: "INJECT_RECORDER_BUTTON" });
-
-          EXT.tabs.onUpdated.removeListener(listener);
-        }
-      });
+      extensionOpenedTabs.add(tab.id);
+      console.log("[BG] Extension opened tab:", tab.id);
     });
 
     return;
@@ -165,9 +176,7 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "CONSOLE_LOG_FROM_PAGE") {
     consoleLogs.push(msg.payload);
 
-    console.log("[BG] Console log received:", msg.payload);
-
-    EXT.tabs.query({}, (tabs) => {
+    EXT.tabs.query({}, tabs => {
       tabs.forEach(tab => {
         EXT.tabs.sendMessage(tab.id, {
           type: "CONSOLE_LOGS_FROM_EXTENSION",
@@ -181,11 +190,8 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ---------- RECORDING DATA ----------
   if (msg.type === "RECORDING_DATA") {
-    console.log("[BG] RECORDING_DATA");
-
-    EXT.tabs.query({}, (tabs) => {
+    EXT.tabs.query({}, tabs => {
       tabs.forEach(tab => {
-
         EXT.tabs.sendMessage(tab.id, {
           type: "RECORDING_DATA_FROM_EXTENSION",
           payload: msg.payload
@@ -208,14 +214,9 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ---------- SCREENSHOT ----------
   if (msg.type === "CAPTURE_FULL") {
-    // Firefox requires windowId, Chrome ignores it
-    EXT.tabs.captureVisibleTab(
-      sender?.tab?.windowId,
-      { format: "png" },
-      (image) => {
-        sendResponse({ image });
-      }
-    );
+    EXT.tabs.captureVisibleTab({ format: "png" }, (image) => {
+      sendResponse({ image });
+    });
     return true;
   }
 });

@@ -130,17 +130,16 @@ function cleanup(requestId) {
 EXT.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === "complete" && extensionOpenedTabs.has(tabId)) {
       EXT.tabs.sendMessage(tabId, {
-        type: "RESTORE_RECORDING_STATE",
+        type: "RESTORE_UI_STATE",
         payload: { isRecording }
       });
 
       EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
       EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
-
-      if (!headerInjectedTabs.has(tabId)) {
-        EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
-        headerInjectedTabs.add(tabId);
-      }
+       if (!headerInjectedTabs.has(tabId)) {
+           EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
+           headerInjectedTabs.add(tabId);
+         }
     }
 });
 
@@ -229,9 +228,5 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
    if (msg.type === "STOP_RECORDING") {
      isRecording = false;
-   }
-   if (msg.type === "REQUEST_RECORDING_STATE") {
-       sendResponse({ isRecording });
-       return true;
    }
 });

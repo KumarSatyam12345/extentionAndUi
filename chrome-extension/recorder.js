@@ -1,16 +1,23 @@
 var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
 window.EXT = EXT;
 
+/* ================= GLOBAL RECORDER STATE ================= */
+if (!window.__RECORDER_STATE__) {
+  window.__RECORDER_STATE__ = {
+    isRecording: false,
+    logs: [],
+    lastInputValue: {}
+  };
+}
 
-let isRecording = false;
-let logs = [];
+const state = window.__RECORDER_STATE__;
 
-// Highlight Configuration
+/* ================= HIGHLIGHT CONFIG ================= */
 const HIGHLIGHT_COLOR = "rgba(255, 255, 0, 0.3)";
 const BORDER_COLOR = "yellow";
 const BORDER_WIDTH = 4;
 
-// --------------------------------------
+/* ================= SCREENSHOT ================= */
 function requestScreenshot(callback) {
   EXT.runtime.sendMessage({ type: "CAPTURE_FULL" }, callback);
 }
@@ -51,7 +58,7 @@ function cropElementFromScreenshot(fullImgSrc, rect, callback) {
   };
 }
 
-// 🔥 STABLE CAPTURE (INPUT + CLICK)
+/* ================= STABLE CAPTURE ================= */
 function captureElementStable(target, done) {
   if (!target) return done(null);
 
@@ -63,18 +70,15 @@ function captureElementStable(target, done) {
         if (!resp?.image) return done(null);
         cropElementFromScreenshot(resp.image, rect, done);
       });
-    }, 40); // Edge-safe delay
+    }, 40);
   });
 }
 
-// --------------------------------------
-let lastInputValue = {};
-
-// ✅ Only real text inputs
+/* ================= INPUT HANDLING ================= */
 function isValidTextInput(target) {
   if (!target || target.tagName !== "INPUT") return false;
 
-  const allowedTypes = [
+  return [
     "text",
     "email",
     "number",
@@ -82,23 +86,17 @@ function isValidTextInput(target) {
     "tel",
     "url",
     "password"
-  ];
-
-  return allowedTypes.includes(target.type);
+  ].includes(target.type);
 }
 
 function commitFinalInput(target) {
   if (!isValidTextInput(target)) return;
 
   const id = target.id || "unknown";
-  const value =
-    target.type === "password"
-      ? "********"
-      : target.value;
+  const value = target.type === "password" ? "********" : target.value;
 
-
-  if (lastInputValue[id] === value) return;
-  lastInputValue[id] = value;
+  if (state.lastInputValue[id] === value) return;
+  state.lastInputValue[id] = value;
 
   captureElementStable(target, (screenshot) => {
     logEvent("input", {
@@ -111,75 +109,79 @@ function commitFinalInput(target) {
   });
 }
 
-// --------------------------------------
+/* ================= LOG EVENT ================= */
 function logEvent(type, data) {
-  if (!isRecording) return;
-  logs.push({ time: new Date().toISOString(), type, data });
+  if (!state.isRecording) return;
+
+  state.logs.push({
+    time: new Date().toISOString(),
+    type,
+    data
+  });
 }
 
-// --------------------------------------
-// CLICK — BEFORE NAVIGATION
-globalThis.addEventListener(
-  "mousedown",
-  (e) => {
-    if (e.target.closest("#___toolbar_container")) return;
+/* ================= EVENT LISTENERS ================= */
+if (!window.__RECORDER_LISTENERS__) {
+  window.__RECORDER_LISTENERS__ = true;
 
-    commitFinalInput(document.activeElement);
+  // CLICK
+  globalThis.addEventListener(
+    "mousedown",
+    (e) => {
+      if (e.target.closest("#___toolbar_container")) return;
 
-    const target = e.target;
+      commitFinalInput(document.activeElement);
 
-    captureElementStable(target, (screenshot) => {
-      logEvent("click", {
-        text: target.innerText,
-        id: target.id,
-        class: target.className,
-        screenshotImage: screenshot
+      captureElementStable(e.target, (screenshot) => {
+        logEvent("click", {
+          text: e.target.innerText,
+          id: e.target.id,
+          class: e.target.className,
+          screenshotImage: screenshot
+        });
       });
-    });
-  },
-  true // capture phase
-);
+    },
+    true
+  );
 
-// INPUT BLUR
-globalThis.addEventListener("blur", (e) => {
-  commitFinalInput(e.target);
-}, true);
+  // INPUT BLUR
+  globalThis.addEventListener("blur", (e) => {
+    commitFinalInput(e.target);
+  }, true);
 
-// --------------------------------------
-// Scroll (THROTTLED ONLY)
-let lastScrollTime = 0;
-const SCROLL_THROTTLE_MS = 200;
+  // SCROLL
+  let lastScrollTime = 0;
+  window.addEventListener("scroll", () => {
+    const now = Date.now();
+    if (now - lastScrollTime < 200) return;
+    lastScrollTime = now;
 
-window.addEventListener("scroll", () => {
-  const now = Date.now();
-  if (now - lastScrollTime < SCROLL_THROTTLE_MS) return;
+    logEvent("scroll", { position: window.scrollY });
+  });
 
-  lastScrollTime = now;
-  logEvent("scroll", { position: window.scrollY });
-});
+  // TAB KEY
+  globalThis.addEventListener("keydown", (e) => {
+    if (e.key === "Tab") commitFinalInput(document.activeElement);
+  });
+}
 
-// Tab navigation
-globalThis.addEventListener("keydown", (e) => {
-  if (e.key === "Tab") commitFinalInput(document.activeElement);
-});
-
-// --------------------------------------
-// Start / Stop Recording
+/* ================= START / STOP ================= */
 globalThis.addEventListener("START_RECORDING", (e) => {
-  const isRestore = e.detail?.restore === true;
+  const restore = e.detail?.restore === true;
 
-  if (!isRestore) {
-    logs = [];
-    lastInputValue = {};
+  if (!restore) {
+    state.logs.length = 0;
+    state.lastInputValue = {};
   }
 
-  isRecording = true;
+  state.isRecording = true;
 });
 
 globalThis.addEventListener("STOP_RECORDING", () => {
-  isRecording = false;
+  state.isRecording = false;
+
   EXT.runtime.sendMessage({
     type: "RECORDING_DATA",
-    payload: logs
+    payload: state.logs
   });
 });

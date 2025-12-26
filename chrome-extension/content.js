@@ -1,6 +1,66 @@
 var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
 window.EXT = EXT;
 
+/* ================= RECORDER STATE ================= */
+let state = {
+  isRecording: false,
+  logs: [],
+  lastInputValue: {}
+};
+
+/* ================= RESTORE STATE ================= */
+EXT.runtime.sendMessage(
+  { type: "REQUEST_RECORDING_STATE" },
+  (res) => {
+    if (res?.isRecording) {
+      state.isRecording = true;
+      window.dispatchEvent(
+        new CustomEvent("START_RECORDING", { detail: { restore: true } })
+      );
+    }
+  }
+);
+
+/* ================= LOG EVENT ================= */
+function logEvent(type, data) {
+  if (!state.isRecording) return;
+
+  state.logs.push({
+    time: new Date().toISOString(),
+    type,
+    data
+  });
+}
+
+/* ================= EVENT LISTENERS ================= */
+globalThis.addEventListener("mousedown", (e) => {
+  if (e.target.closest("#___toolbar_container")) return;
+
+  logEvent("click", {
+    text: e.target.innerText,
+    id: e.target.id,
+    class: e.target.className
+  });
+}, true);
+
+/* ================= START / STOP ================= */
+globalThis.addEventListener("START_RECORDING", (e) => {
+  if (!e.detail?.restore) {
+    state.logs = [];
+    state.lastInputValue = {};
+  }
+  state.isRecording = true;
+});
+
+globalThis.addEventListener("STOP_RECORDING", () => {
+  state.isRecording = false;
+
+  EXT.runtime.sendMessage({
+    type: "RECORDING_DATA",
+    payload: state.logs
+  });
+});
+
 function initExtensionUI() {
   addHeader();
   injectToolbarContainer();
@@ -64,12 +124,12 @@ EXT.runtime.onMessage.addListener((msg) => {
     case "RESTORE_UI_STATE":
       if (msg.payload?.isRecording) {
         window.dispatchEvent(
-          new CustomEvent("START_RECORDING", {
-            detail: { restore: true }
-          })
+          new CustomEvent("START_RECORDING", { detail: { restore: true } })
         );
+        window.__SET_RECORDING_UI__?.(true);
       }
       break;
+
 
     case "INJECT_PAGE_CONSOLE_RECORDER":
       injectPageConsoleRecorder();
@@ -108,6 +168,15 @@ EXT.runtime.onMessage.addListener((msg) => {
       );
       break;
   }
+  case "RESTORE_RECORDING_STATE":
+    if (msg.payload?.isRecording) {
+      window.__SET_RECORDING_UI__?.(true);
+      window.dispatchEvent(
+        new CustomEvent("START_RECORDING", { detail: { restore: true } })
+      );
+    }
+    break;
+
 });
 
 
@@ -249,6 +318,22 @@ function injectToolbarContainer() {
   function toggleRecording() {
     if (recorderBtn.dataset.state === "recording") {
       recorderBtn.dataset.state = "stopped";
+      window.__SET_RECORDING_UI__ = (isRecording) => {
+        if (!recorderBtn) return;
+
+        if (isRecording) {
+          recorderBtn.dataset.state = "recording";
+          recInner.style.background = "#34c759";
+          recInner.style.borderRadius = "4px";
+          recLabel.innerText = "Recording...";
+        } else {
+          recorderBtn.dataset.state = "stopped";
+          recInner.style.background = "#ff1a28";
+          recInner.style.borderRadius = "5px";
+          recLabel.innerText = "Record";
+        }
+      };
+
       recInner.style.background = "#ff1a28";
       recInner.style.borderRadius = "5px";
       recLabel.innerText = "Record";

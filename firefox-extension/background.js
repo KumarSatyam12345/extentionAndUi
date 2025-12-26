@@ -3,9 +3,11 @@ const EXT = typeof browser !== "undefined" ? browser : chrome;
 // ================== GLOBAL STORAGE ==================
 let networkLogs = [];
 let consoleLogs = [];
+let isRecording = false;
 
 // 🔹 NEW: support multiple tabs
 const extensionOpenedTabs = new Set();
+const headerInjectedTabs = new Set();
 
 // ================== NETWORK HELPERS ==================
 const requestStartTime = {};
@@ -126,24 +128,25 @@ function cleanup(requestId) {
 
 // ================== TAB UPDATE (NEW FEATURE) ==================
 EXT.tabs.onUpdated.addListener((tabId, info) => {
-  if (
-    info.status === "complete" &&
-    extensionOpenedTabs.has(tabId)
-  ) {
-    console.log("[BG] Re-inject UI after refresh:", tabId);
+  if (info.status === "complete" && extensionOpenedTabs.has(tabId)) {
+      EXT.tabs.sendMessage(tabId, {
+        type: "RESTORE_UI_STATE",
+        payload: { isRecording }
+      });
 
-    EXT.tabs.sendMessage(tabId, {
-      type: "INJECT_PAGE_CONSOLE_RECORDER"
-    });
-
-    EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
-    EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
-  }
+      EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
+      EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
+       if (!headerInjectedTabs.has(tabId)) {
+           EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
+           headerInjectedTabs.add(tabId);
+         }
+    }
 });
 
 // ================== TAB CLOSE CLEANUP ==================
 EXT.tabs.onRemoved.addListener(tabId => {
   extensionOpenedTabs.delete(tabId);
+  headerInjectedTabs.delete(tabId);
 });
 
 // ================== MESSAGE HANDLER ==================
@@ -219,4 +222,11 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
+  if (msg.type === "START_RECORDING") {
+     isRecording = true;
+  }
+
+   if (msg.type === "STOP_RECORDING") {
+     isRecording = false;
+   }
 });

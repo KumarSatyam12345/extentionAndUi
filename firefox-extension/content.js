@@ -61,6 +61,16 @@ EXT.runtime.onMessage.addListener((msg) => {
       injectToolbarContainer();
       break;
 
+    case "RESTORE_UI_STATE":
+      if (msg.payload?.isRecording) {
+        window.dispatchEvent(
+          new CustomEvent("START_RECORDING", {
+            detail: { restore: true }
+          })
+        );
+      }
+      break;
+
     case "INJECT_PAGE_CONSOLE_RECORDER":
       injectPageConsoleRecorder();
       break;
@@ -242,12 +252,16 @@ function injectToolbarContainer() {
       recInner.style.background = "#ff1a28";
       recInner.style.borderRadius = "5px";
       recLabel.innerText = "Record";
+
+      EXT.runtime.sendMessage({ type: "STOP_RECORDING" });
       window.dispatchEvent(new CustomEvent("STOP_RECORDING"));
     } else {
       recorderBtn.dataset.state = "recording";
       recInner.style.background = "#34c759";
       recInner.style.borderRadius = "4px";
       recLabel.innerText = "Recording...";
+
+      EXT.runtime.sendMessage({ type: "START_RECORDING" });
       window.dispatchEvent(new CustomEvent("START_RECORDING"));
     }
   }

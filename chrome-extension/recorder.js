@@ -165,9 +165,14 @@ globalThis.addEventListener("keydown", (e) => {
 
 // --------------------------------------
 // Start / Stop Recording
-globalThis.addEventListener("START_RECORDING", () => {
-  logs = [];
-  lastInputValue = {};
+globalThis.addEventListener("START_RECORDING", (e) => {
+  const isRestore = e.detail?.restore === true;
+
+  if (!isRestore) {
+    logs = [];
+    lastInputValue = {};
+  }
+
   isRecording = true;
 });
 

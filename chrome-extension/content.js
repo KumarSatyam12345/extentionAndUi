@@ -1,6 +1,8 @@
 var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
 window.EXT = EXT;
 
+let LAST_RECORDED_STEPS = [];
+let LAST_RECORDED_URL = null;
 function initExtensionUI() {
   addHeader();
   injectToolbarContainer();
@@ -99,6 +101,8 @@ EXT.runtime.onMessage.addListener((msg) => {
 
     // ✅ OPTIONAL but recommended (recorded steps)
     case "RECORDING_DATA_FROM_EXTENSION":
+      LAST_RECORDED_STEPS = msg.payload;
+      LAST_RECORDED_URL = location.href;
       window.postMessage(
         {
           type: "SHOW_RECORDED_LOGS_UI",
@@ -361,3 +365,19 @@ function injectPageConsoleRecorder() {
 
   (document.head || document.documentElement).appendChild(script);
 }
+
+window.addEventListener("REPLAY_CLICKED", () => {
+  if (!LAST_RECORDED_STEPS.length) return;
+
+  EXT.runtime.sendMessage({
+    type: "REPLAY_IN_NEW_TAB",
+    payload: {
+      steps: LAST_RECORDED_STEPS,
+      url: LAST_RECORDED_URL
+    }
+  });
+
+  // Optional safety
+  LAST_RECORDED_STEPS = [];
+});
+

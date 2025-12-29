@@ -146,6 +146,40 @@ function logEvent(type, data) {
   logs.push({ time: new Date().toISOString(), type, data });
 }
 
+function observeAutoFilledInputs() {
+  const inputs = document.querySelectorAll("input");
+
+  inputs.forEach((input) => {
+    if (input._observed) return; // skip if already observed
+    input._observed = true;
+
+    // Observe value changes (mutation observer for autofill)
+    const observer = new MutationObserver(() => commitFinalInput(input));
+    observer.observe(input, { attributes: true, attributeFilter: ["value"] });
+
+    // Listen to input events too
+    input.addEventListener("input", () => commitFinalInput(input));
+
+    // Polling fallback (some browsers autofill without events)
+    const pollInterval = setInterval(() => {
+      const id = input.id || input.name || "unknown";
+      if (input.value && lastInputValue[id] !== input.value) {
+        commitFinalInput(input);
+      }
+    }, 300);
+
+    // Stop polling if input removed from DOM
+    const removalObserver = new MutationObserver(() => {
+      if (!document.body.contains(input)) {
+        clearInterval(pollInterval);
+        removalObserver.disconnect();
+      }
+    });
+    removalObserver.observe(document.body, { childList: true, subtree: true });
+  });
+}
+
+
 // --------------------------------------
 // CLICK — BEFORE NAVIGATION
 globalThis.addEventListener(
@@ -203,6 +237,7 @@ globalThis.addEventListener("START_RECORDING", (e) => {
   }
 
   isRecording = true;
+  observeAutoFilledInputs();
 });
 
 globalThis.addEventListener("STOP_RECORDING", () => {

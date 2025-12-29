@@ -230,7 +230,7 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                  target: { tabId: tab.id },
                  files: ["replayExecutor.js"],
                }).catch(console.error);
-             }, 500); // 500ms delay to ensure content.js is ready
+             }, 600); // 500ms delay to ensure content.js is ready
 
              EXT.tabs.onUpdated.removeListener(onUpdatedListener);
            }

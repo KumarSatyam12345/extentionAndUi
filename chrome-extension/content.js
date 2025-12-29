@@ -380,4 +380,8 @@ window.addEventListener("REPLAY_CLICKED", () => {
   // Optional safety
   LAST_RECORDED_STEPS = [];
 });
+setInterval(() => {
+  if (isRecording) observeAutoFilledInputs();
+}, 500);
+
 

@@ -126,6 +126,20 @@ export default function UrlOpener() {
         >
           Open URL
         </button>
+        <button
+          onClick={() => {
+            console.log("[UI] Replay clicked");
+            window.postMessage({ type: "UI_REPLAY_CLICKED" }, "*");
+          }}
+          style={{
+            ...styles.button,
+            marginTop: "10px",
+            background: "#ff9f0a"
+          }}
+        >
+          Replay
+        </button>
+
 
         <Tabs activeTab={activeTab} setActiveTab={setActiveTab} recordedCount={recordedCount} consoleCount={consoleCount} networkCount={networkCount} styles={styles} />
 

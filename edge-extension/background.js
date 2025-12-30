@@ -214,6 +214,36 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     return;
   }
+  if (msg.type === "REPLAY_IN_NEW_TAB") {
+     const { steps, url } = msg.payload;
+
+     EXT.storage.local.set({ AUTO_REPLAY_DATA: steps }, () => {
+       EXT.tabs.create({ url }, (tab) => {
+         if (!tab?.id) return;
+
+         // Wait for the tab to complete loading
+         const onUpdatedListener = function (tabId, changeInfo) {
+           if (tabId === tab.id && changeInfo.status === "complete") {
+             // Give content script a moment to initialize
+             setTimeout(() => {
+               EXT.scripting.executeScript({
+                 target: { tabId: tab.id },
+                 files: ["replayExecutor.js"],
+               }).catch(console.error);
+             }, 600); // 500ms delay to ensure content.js is ready
+
+             EXT.tabs.onUpdated.removeListener(onUpdatedListener);
+           }
+         };
+
+         EXT.tabs.onUpdated.addListener(onUpdatedListener);
+       });
+     });
+
+     return;
+   }
+
+
 
   // ---------- SCREENSHOT ----------
   if (msg.type === "CAPTURE_FULL") {

@@ -1,6 +1,8 @@
 var EXT = window.EXT || (typeof browser !== "undefined" ? browser : chrome);
 window.EXT = EXT;
 
+let LAST_RECORDED_STEPS = [];
+let LAST_RECORDED_URL = null;
 function initExtensionUI() {
   addHeader();
   injectToolbarContainer();
@@ -25,10 +27,14 @@ window.addEventListener("message", event => {
 
   // Open URL
   if (event.data?.type === "OPEN_URL_FROM_UI") {
+    LAST_RECORDED_URL = event.data.payload;
     EXT.runtime.sendMessage({
       type: "OPEN_URL",
       payload: event.data.payload
     });
+  }
+  if (event.data?.type === "UI_REPLAY_CLICKED") {
+    window.dispatchEvent(new CustomEvent("REPLAY_CLICKED"));
   }
 
   // Console logs from page script
@@ -99,6 +105,15 @@ EXT.runtime.onMessage.addListener((msg) => {
 
     // ✅ OPTIONAL but recommended (recorded steps)
     case "RECORDING_DATA_FROM_EXTENSION":
+      LAST_RECORDED_STEPS = msg.payload;
+
+      // ✅ Only set URL if it is NOT already set by UI
+      if (!LAST_RECORDED_URL) {
+        LAST_RECORDED_URL = location.href;
+      }
+
+      console.log("Replay URL resolved as:", LAST_RECORDED_URL);
+
       window.postMessage(
         {
           type: "SHOW_RECORDED_LOGS_UI",
@@ -107,6 +122,7 @@ EXT.runtime.onMessage.addListener((msg) => {
         "*"
       );
       break;
+
   }
 });
 
@@ -361,3 +377,66 @@ function injectPageConsoleRecorder() {
 
   (document.head || document.documentElement).appendChild(script);
 }
+
+window.addEventListener("REPLAY_CLICKED", () => {
+  if (!Array.isArray(LAST_RECORDED_STEPS) || !LAST_RECORDED_STEPS.length) {
+    console.warn("No recorded steps to replay");
+    showReplayWarning("No recorded steps to replay");
+    return;
+  }
+
+  EXT.runtime.sendMessage({
+    type: "REPLAY_IN_NEW_TAB",
+    payload: {
+      steps: LAST_RECORDED_STEPS,
+      url: LAST_RECORDED_URL
+    }
+  });
+});
+
+function showReplayWarning(message) {
+  // Remove existing toast if any
+  const oldToast = document.getElementById("ext-replay-toast");
+  if (oldToast) oldToast.remove();
+
+  const toast = document.createElement("div");
+  toast.id = "ext-replay-toast";
+  toast.innerText = message;
+
+  toast.style.position = "fixed";
+  toast.style.top = "30px";
+  toast.style.left = "50%";
+  toast.style.transform = "translateX(-50%)";
+
+  toast.style.background = "#ff3b30"; // red warning
+  toast.style.color = "#fff";
+  toast.style.padding = "12px 18px";
+  toast.style.borderRadius = "8px";
+  toast.style.fontSize = "14px";
+  toast.style.fontWeight = "600";
+  toast.style.boxShadow = "0 6px 18px rgba(0,0,0,0.25)";
+  toast.style.zIndex = "999999999";
+  toast.style.opacity = "0";
+  toast.style.transition = "opacity 0.25s ease, transform 0.25s ease";
+
+  document.body.appendChild(toast);
+
+  // fade + slide in
+  requestAnimationFrame(() => {
+    toast.style.opacity = "1";
+    toast.style.transform = "translateX(-50%) translateY(0)";
+  });
+
+  // auto remove after 3 seconds
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateX(-50%) translateY(-10px)";
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+setInterval(() => {
+  if (isRecording) observeAutoFilledInputs();
+}, 500);
+
+

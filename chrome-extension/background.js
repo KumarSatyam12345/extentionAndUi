@@ -53,6 +53,20 @@ EXT.webRequest.onBeforeSendHeaders.addListener(
   { urls: ["<all_urls>"] },
   ["requestHeaders"]
 );
+EXT.tabs.onCreated.addListener((tab) => {
+  if (tab.openerTabId && extensionOpenedTabs.has(tab.openerTabId)) {
+    extensionOpenedTabs.add(tab.id);
+    console.log("[BG] Child tab inherited extension:", tab.id);
+  }
+  setTimeout(() => {
+      EXT.tabs.get(tab.id, updatedTab => {
+        if (updatedTab.openerTabId &&
+            extensionOpenedTabs.has(updatedTab.openerTabId)) {
+          extensionOpenedTabs.add(tab.id);
+        }
+      });
+    }, 500);
+});
 
 // ================== RESPONSE SUCCESS ==================
 EXT.webRequest.onCompleted.addListener(
@@ -130,18 +144,19 @@ function cleanup(requestId) {
 // ================== TAB UPDATE (NEW FEATURE) ==================
 EXT.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === "complete" && extensionOpenedTabs.has(tabId)) {
-      EXT.tabs.sendMessage(tabId, {
-        type: "RESTORE_UI_STATE",
-        payload: { isRecording }
-      });
+    EXT.tabs.sendMessage(tabId, {
+      type: "RESTORE_UI_STATE",
+      payload: { isRecording }
+    });
 
-      EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
-      EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
-       if (!headerInjectedTabs.has(tabId)) {
-           EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
-           headerInjectedTabs.add(tabId);
-         }
+    EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
+    EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
+
+    if (!headerInjectedTabs.has(tabId)) {
+      EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
+      headerInjectedTabs.add(tabId);
     }
+  }
 });
 
 // ================== TAB CLOSE CLEANUP ==================
@@ -158,13 +173,25 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ installed: true });
     return true;
   }
+  // ---------- REQUEST LOGS (UI REFRESH FIX) ----------
+  if (msg.type === "REQUEST_LOGS") {
+    sendResponse({
+      recordedSteps,
+      consoleLogs,
+      networkLogs,
+      isRecording
+    });
+    return true;
+  }
 
   // ---------- OPEN URL ----------
   if (msg.type === "OPEN_URL") {
     console.log("[BG] OPEN_URL");
 
     networkLogs = [];
+    recordedSteps = [];
     consoleLogs = [];
+
 
     EXT.tabs.create({ url: msg.payload }, (tab) => {
       if (!tab?.id) return;

@@ -438,5 +438,3 @@ function showReplayWarning(message) {
 setInterval(() => {
   if (isRecording) observeAutoFilledInputs();
 }, 500);
-
-

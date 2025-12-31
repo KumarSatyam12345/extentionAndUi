@@ -3,6 +3,7 @@ const EXT = typeof browser !== "undefined" ? browser : chrome;
 // ================== GLOBAL STORAGE ==================
 let networkLogs = [];
 let consoleLogs = [];
+let recordedSteps= [];
 let isRecording = false;
 
 // 🔹 NEW: support multiple tabs
@@ -193,11 +194,14 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ---------- RECORDING DATA ----------
   if (msg.type === "RECORDING_DATA") {
+    if (Array.isArray(msg.payload)) {
+      recordedSteps.push(...msg.payload);
+    }
     EXT.tabs.query({}, tabs => {
       tabs.forEach(tab => {
         EXT.tabs.sendMessage(tab.id, {
           type: "RECORDING_DATA_FROM_EXTENSION",
-          payload: msg.payload
+          payload: recordedSteps
         });
 
         EXT.tabs.sendMessage(tab.id, {

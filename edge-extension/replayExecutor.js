@@ -106,6 +106,11 @@ EXT.storage.local.get("AUTO_REPLAY_DATA", (res) => {
   if (!Array.isArray(steps) || !steps.length) return;
 
   let index = 0;
+
+  EXT.storage.local.get("AUTO_REPLAY_INDEX", res => {
+    index = res.AUTO_REPLAY_INDEX || 0;
+  });
+
   const hud = createReplayHUD(steps.length);
 
   function findElement(step) {
@@ -135,6 +140,7 @@ EXT.storage.local.get("AUTO_REPLAY_DATA", (res) => {
     }
 
     const step = steps[index++];
+    EXT.storage.local.set({ AUTO_REPLAY_INDEX: index });
     let el;
 
     try {

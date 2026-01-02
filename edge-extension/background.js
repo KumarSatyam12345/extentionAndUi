@@ -3,6 +3,8 @@ const EXT = typeof browser !== "undefined" ? browser : chrome;
 // ================== GLOBAL STORAGE ==================
 let networkLogs = [];
 let consoleLogs = [];
+let recordedSteps= [];
+let replayState = null;
 let isRecording = false;
 
 // 🔹 NEW: support multiple tabs
@@ -52,6 +54,33 @@ EXT.webRequest.onBeforeSendHeaders.addListener(
   { urls: ["<all_urls>"] },
   ["requestHeaders"]
 );
+EXT.tabs.onCreated.addListener((tab) => {
+  if (tab.openerTabId && extensionOpenedTabs.has(tab.openerTabId)) {
+    extensionOpenedTabs.add(tab.id);
+    console.log("[BG] Child tab inherited extension:", tab.id);
+  }
+  setTimeout(() => {
+      EXT.tabs.get(tab.id, updatedTab => {
+        if (updatedTab.openerTabId &&
+            extensionOpenedTabs.has(updatedTab.openerTabId)) {
+          extensionOpenedTabs.add(tab.id);
+        }
+      });
+    }, 500);
+});
+
+EXT.tabs.onCreated.addListener((tab) => {
+  if (!replayState) return;
+
+  if (tab.openerTabId) {
+    EXT.tabs.get(tab.openerTabId, opener => {
+      if (!opener) return;
+
+      // Replay follows child tab
+      attachReplayToTab(tab.id);
+    });
+  }
+});
 
 // ================== RESPONSE SUCCESS ==================
 EXT.webRequest.onCompleted.addListener(
@@ -129,18 +158,19 @@ function cleanup(requestId) {
 // ================== TAB UPDATE (NEW FEATURE) ==================
 EXT.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status === "complete" && extensionOpenedTabs.has(tabId)) {
-      EXT.tabs.sendMessage(tabId, {
-        type: "RESTORE_UI_STATE",
-        payload: { isRecording }
-      });
+    EXT.tabs.sendMessage(tabId, {
+      type: "RESTORE_UI_STATE",
+      payload: { isRecording }
+    });
 
-      EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
-      EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
-       if (!headerInjectedTabs.has(tabId)) {
-           EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
-           headerInjectedTabs.add(tabId);
-         }
+    EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
+    EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
+
+    if (!headerInjectedTabs.has(tabId)) {
+      EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
+      headerInjectedTabs.add(tabId);
     }
+  }
 });
 
 // ================== TAB CLOSE CLEANUP ==================
@@ -157,13 +187,25 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ installed: true });
     return true;
   }
+  // ---------- REQUEST LOGS (UI REFRESH FIX) ----------
+  if (msg.type === "REQUEST_LOGS") {
+    sendResponse({
+      recordedSteps,
+      consoleLogs,
+      networkLogs,
+      isRecording
+    });
+    return true;
+  }
 
   // ---------- OPEN URL ----------
   if (msg.type === "OPEN_URL") {
     console.log("[BG] OPEN_URL");
 
     networkLogs = [];
+    recordedSteps = [];
     consoleLogs = [];
+
 
     EXT.tabs.create({ url: msg.payload }, (tab) => {
       if (!tab?.id) return;
@@ -193,11 +235,14 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ---------- RECORDING DATA ----------
   if (msg.type === "RECORDING_DATA") {
+    if (Array.isArray(msg.payload)) {
+      recordedSteps.push(...msg.payload);
+    }
     EXT.tabs.query({}, tabs => {
       tabs.forEach(tab => {
         EXT.tabs.sendMessage(tab.id, {
           type: "RECORDING_DATA_FROM_EXTENSION",
-          payload: msg.payload
+          payload: recordedSteps
         });
 
         EXT.tabs.sendMessage(tab.id, {
@@ -215,34 +260,28 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
   if (msg.type === "REPLAY_IN_NEW_TAB") {
-     const { steps, url } = msg.payload;
+    const { steps, url } = msg.payload;
 
-     EXT.storage.local.set({ AUTO_REPLAY_DATA: steps }, () => {
-       EXT.tabs.create({ url }, (tab) => {
-         if (!tab?.id) return;
+    replayState = {
+      steps,
+      currentIndex: 0
+    };
 
-         // Wait for the tab to complete loading
-         const onUpdatedListener = function (tabId, changeInfo) {
-           if (tabId === tab.id && changeInfo.status === "complete") {
-             // Give content script a moment to initialize
-             setTimeout(() => {
-               EXT.scripting.executeScript({
-                 target: { tabId: tab.id },
-                 files: ["replayExecutor.js"],
-               }).catch(console.error);
-             }, 600); // 500ms delay to ensure content.js is ready
+    EXT.storage.local.set(
+      {
+        AUTO_REPLAY_DATA: steps,
+        AUTO_REPLAY_INDEX: 0
+      },
+      () => {
+        EXT.tabs.create({ url }, (tab) => {
+          if (!tab?.id) return;
+          attachReplayToTab(tab.id);
+        });
+      }
+    );
 
-             EXT.tabs.onUpdated.removeListener(onUpdatedListener);
-           }
-         };
-
-         EXT.tabs.onUpdated.addListener(onUpdatedListener);
-       });
-     });
-
-     return;
-   }
-
+    return;
+  }
 
 
   // ---------- SCREENSHOT ----------
@@ -260,3 +299,21 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
      isRecording = false;
    }
 });
+
+function attachReplayToTab(tabId) {
+  const onUpdated = (updatedTabId, info) => {
+    if (updatedTabId === tabId && info.status === "complete") {
+      setTimeout(() => {
+        EXT.scripting.executeScript({
+          target: { tabId },
+          files: ["replayExecutor.js"]
+        }).catch(console.error);
+      }, 600);
+
+      EXT.tabs.onUpdated.removeListener(onUpdated);
+    }
+  };
+
+  EXT.tabs.onUpdated.addListener(onUpdated);
+}
+

@@ -8,8 +8,38 @@ function initExtensionUI() {
   injectToolbarContainer();
   injectPageConsoleRecorder();
 
-  // ✅ IMPORTANT FIX: always request logs after UI init
-  EXT.runtime.sendMessage({ type: "REQUEST_LOGS" });
+  EXT.runtime.sendMessage({ type: "REQUEST_LOGS" }, (res) => {
+    if (!res) return;
+
+    if (Array.isArray(res.recordedSteps)) {
+      LAST_RECORDED_STEPS = res.recordedSteps;
+
+      window.postMessage({
+        type: "SHOW_RECORDED_LOGS_UI",
+        payload: res.recordedSteps
+      }, "*");
+    }
+
+    if (Array.isArray(res.consoleLogs)) {
+      window.postMessage({
+        type: "SHOW_CONSOLE_LOGS_UI",
+        payload: res.consoleLogs
+      }, "*");
+    }
+
+    if (Array.isArray(res.networkLogs)) {
+      window.postMessage({
+        type: "SHOW_NETWORK_LOGS_UI",
+        payload: res.networkLogs
+      }, "*");
+    }
+
+    if (res.isRecording) {
+      window.dispatchEvent(new CustomEvent("START_RECORDING", {
+        detail: { restore: true }
+      }));
+    }
+  });
 }
 
 /* ================= PAGE → EXTENSION ================= */
@@ -28,6 +58,7 @@ window.addEventListener("message", event => {
   // Open URL
   if (event.data?.type === "OPEN_URL_FROM_UI") {
     LAST_RECORDED_URL = event.data.payload;
+    LAST_RECORDED_STEPS = []
     EXT.runtime.sendMessage({
       type: "OPEN_URL",
       payload: event.data.payload
@@ -438,5 +469,3 @@ function showReplayWarning(message) {
 setInterval(() => {
   if (isRecording) observeAutoFilledInputs();
 }, 500);
-
-

@@ -4,6 +4,7 @@ const EXT = typeof browser !== "undefined" ? browser : chrome;
 let networkLogs = [];
 let consoleLogs = [];
 let recordedSteps= [];
+let replayState = null;
 let isRecording = false;
 
 // 🔹 NEW: support multiple tabs
@@ -66,6 +67,19 @@ EXT.tabs.onCreated.addListener((tab) => {
         }
       });
     }, 500);
+});
+
+EXT.tabs.onCreated.addListener((tab) => {
+  if (!replayState) return;
+
+  if (tab.openerTabId) {
+    EXT.tabs.get(tab.openerTabId, opener => {
+      if (!opener) return;
+
+      // Replay follows child tab
+      attachReplayToTab(tab.id);
+    });
+  }
 });
 
 // ================== RESPONSE SUCCESS ==================
@@ -246,34 +260,28 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
   if (msg.type === "REPLAY_IN_NEW_TAB") {
-     const { steps, url } = msg.payload;
+    const { steps, url } = msg.payload;
 
-     EXT.storage.local.set({ AUTO_REPLAY_DATA: steps }, () => {
-       EXT.tabs.create({ url }, (tab) => {
-         if (!tab?.id) return;
+    replayState = {
+      steps,
+      currentIndex: 0
+    };
 
-         // Wait for the tab to complete loading
-         const onUpdatedListener = function (tabId, changeInfo) {
-           if (tabId === tab.id && changeInfo.status === "complete") {
-             // Give content script a moment to initialize
-             setTimeout(() => {
-               EXT.scripting.executeScript({
-                 target: { tabId: tab.id },
-                 files: ["replayExecutor.js"],
-               }).catch(console.error);
-             }, 600); // 500ms delay to ensure content.js is ready
+    EXT.storage.local.set(
+      {
+        AUTO_REPLAY_DATA: steps,
+        AUTO_REPLAY_INDEX: 0
+      },
+      () => {
+        EXT.tabs.create({ url }, (tab) => {
+          if (!tab?.id) return;
+          attachReplayToTab(tab.id);
+        });
+      }
+    );
 
-             EXT.tabs.onUpdated.removeListener(onUpdatedListener);
-           }
-         };
-
-         EXT.tabs.onUpdated.addListener(onUpdatedListener);
-       });
-     });
-
-     return;
-   }
-
+    return;
+  }
 
 
   // ---------- SCREENSHOT ----------
@@ -291,3 +299,21 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
      isRecording = false;
    }
 });
+
+function attachReplayToTab(tabId) {
+  const onUpdated = (updatedTabId, info) => {
+    if (updatedTabId === tabId && info.status === "complete") {
+      setTimeout(() => {
+        EXT.scripting.executeScript({
+          target: { tabId },
+          files: ["replayExecutor.js"]
+        }).catch(console.error);
+      }, 600);
+
+      EXT.tabs.onUpdated.removeListener(onUpdated);
+    }
+  };
+
+  EXT.tabs.onUpdated.addListener(onUpdated);
+}
+

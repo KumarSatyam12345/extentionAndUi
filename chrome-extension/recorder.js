@@ -3,6 +3,7 @@ window.EXT = EXT;
 
 
 let isRecording = false;
+let userInteracted = false;
 let logs = [];
 
 // Highlight Configuration
@@ -116,6 +117,7 @@ function isValidTextInput(target) {
 }
 
 function commitFinalInput(target) {
+  if (!isRecording || !userInteracted) return;
   if (!isValidTextInput(target)) return;
 
   const id = target.id || "unknown";
@@ -163,7 +165,12 @@ function observeAutoFilledInputs() {
     // Polling fallback (some browsers autofill without events)
     const pollInterval = setInterval(() => {
       const id = input.id || input.name || "unknown";
-      if (input.value && lastInputValue[id] !== input.value) {
+      if (
+        userInteracted &&
+        document.activeElement === input &&
+        input.value &&
+        lastInputValue[id] !== input.value
+      ) {
         commitFinalInput(input);
       }
     }, 300);
@@ -225,6 +232,12 @@ window.addEventListener("scroll", () => {
 globalThis.addEventListener("keydown", (e) => {
   if (e.key === "Tab") commitFinalInput(document.activeElement);
 });
+["mousedown", "keydown", "touchstart"].forEach(event => {
+  window.addEventListener(event, () => {
+    userInteracted = true;
+  }, { once: true, capture: true });
+});
+
 
 // --------------------------------------
 // Start / Stop Recording
@@ -234,6 +247,7 @@ globalThis.addEventListener("START_RECORDING", (e) => {
   if (!isRestore) {
     logs = [];
     lastInputValue = {};
+    userInteracted = false;
   }
 
   isRecording = true;

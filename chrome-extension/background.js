@@ -4,6 +4,7 @@ const EXT = typeof browser !== "undefined" ? browser : chrome;
 let networkLogs = [];
 let consoleLogs = [];
 let recordedSteps= [];
+const replayTabs = new Set();
 let replayState = null;
 let isRecording = false;
 
@@ -55,31 +56,45 @@ EXT.webRequest.onBeforeSendHeaders.addListener(
   ["requestHeaders"]
 );
 EXT.tabs.onCreated.addListener((tab) => {
-  if (tab.openerTabId && extensionOpenedTabs.has(tab.openerTabId)) {
-    extensionOpenedTabs.add(tab.id);
-    console.log("[BG] Child tab inherited extension:", tab.id);
-  }
-  setTimeout(() => {
-      EXT.tabs.get(tab.id, updatedTab => {
-        if (updatedTab.openerTabId &&
-            extensionOpenedTabs.has(updatedTab.openerTabId)) {
-          extensionOpenedTabs.add(tab.id);
-        }
+  if (!tab.openerTabId) return;
+  if (!extensionOpenedTabs.has(tab.openerTabId)) return;
+
+  extensionOpenedTabs.add(tab.id);
+  console.log("[BG] Child tab inherited extension:", tab.id);
+
+  if (!isRecording) return;
+
+  // 1️⃣ Start recording in child AFTER load
+  const onUpdated = (updatedTabId, info) => {
+    if (updatedTabId !== tab.id) return;
+    if (info.status !== "complete") return;
+
+    EXT.tabs.sendMessage(tab.id, {
+      type: "FORCE_START_RECORDING"
+    });
+
+    EXT.tabs.onUpdated.removeListener(onUpdated);
+
+    // 2️⃣ Stop parent AFTER 1 second
+    setTimeout(() => {
+      EXT.tabs.sendMessage(tab.openerTabId, {
+        type: "FORCE_STOP_RECORDING"
       });
-    }, 500);
+    }, 1000);
+  };
+
+  EXT.tabs.onUpdated.addListener(onUpdated);
 });
 
+
 EXT.tabs.onCreated.addListener((tab) => {
-  if (!replayState) return;
+  if (!tab.openerTabId) return;
 
-  if (tab.openerTabId) {
-    EXT.tabs.get(tab.openerTabId, opener => {
-      if (!opener) return;
+  // ✅ Parent must be replay tab
+  if (!replayTabs.has(tab.openerTabId)) return;
 
-      // Replay follows child tab
-      attachReplayToTab(tab.id);
-    });
-  }
+  replayTabs.add(tab.id);
+  attachReplayToTab(tab.id);
 });
 
 // ================== RESPONSE SUCCESS ==================
@@ -157,19 +172,23 @@ function cleanup(requestId) {
 
 // ================== TAB UPDATE (NEW FEATURE) ==================
 EXT.tabs.onUpdated.addListener((tabId, info) => {
-  if (info.status === "complete" && extensionOpenedTabs.has(tabId)) {
-    EXT.tabs.sendMessage(tabId, {
-      type: "RESTORE_UI_STATE",
-      payload: { isRecording }
-    });
+  if (info.status !== "complete") return;
+  if (!extensionOpenedTabs.has(tabId)) return;
 
-    EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
-    EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
+  // 🚫 DO NOT inject UI during replay
+  if (replayState) return;
 
-    if (!headerInjectedTabs.has(tabId)) {
-      EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
-      headerInjectedTabs.add(tabId);
-    }
+  EXT.tabs.sendMessage(tabId, {
+    type: "RESTORE_UI_STATE",
+    payload: { isRecording }
+  });
+
+  EXT.tabs.sendMessage(tabId, { type: "INJECT_PAGE_CONSOLE_RECORDER" });
+  EXT.tabs.sendMessage(tabId, { type: "INJECT_RECORDER_BUTTON" });
+
+  if (!headerInjectedTabs.has(tabId)) {
+    EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
+    headerInjectedTabs.add(tabId);
   }
 });
 
@@ -196,6 +215,10 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       isRecording
     });
     return true;
+  }
+  if (msg.type === "REPLAY_FINISHED") {
+    replayTabs.clear();
+    replayState = null;
   }
 
   // ---------- OPEN URL ----------
@@ -275,6 +298,8 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       () => {
         EXT.tabs.create({ url }, (tab) => {
           if (!tab?.id) return;
+
+          replayTabs.add(tab.id);
           attachReplayToTab(tab.id);
         });
       }
@@ -302,16 +327,13 @@ EXT.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 function attachReplayToTab(tabId) {
   const onUpdated = (updatedTabId, info) => {
-    if (updatedTabId === tabId && info.status === "complete") {
-      setTimeout(() => {
-        EXT.scripting.executeScript({
-          target: { tabId },
-          files: ["replayExecutor.js"]
-        }).catch(console.error);
-      }, 600);
+    if (updatedTabId !== tabId) return;
+    if (info.status !== "complete") return;
 
-      EXT.tabs.onUpdated.removeListener(onUpdated);
-    }
+    EXT.scripting.executeScript({
+      target: { tabId },
+      files: ["replayExecutor.js"]
+    }).catch(console.error);
   };
 
   EXT.tabs.onUpdated.addListener(onUpdated);

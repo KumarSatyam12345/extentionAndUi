@@ -154,6 +154,19 @@ EXT.runtime.onMessage.addListener((msg) => {
       );
       break;
 
+    case "FORCE_STOP_RECORDING":
+      window.dispatchEvent(new CustomEvent("STOP_RECORDING", {
+        detail: { forced: true }
+      }));
+      break;
+
+    case "FORCE_START_RECORDING":
+      window.dispatchEvent(new CustomEvent("START_RECORDING", {
+        detail: { forced: true }
+      }));
+      break;
+
+
   }
 });
 
@@ -259,6 +272,8 @@ function injectToolbarContainer() {
   recorderBtn.style.cursor = "pointer";
   recorderBtn.style.boxShadow = "0 3px 6px rgba(0,0,0,0.15)";
   recorderBtn.style.transition = "transform 0.15s ease";
+  recorderBtn.dataset.rec = "true";
+
 
   const recInner = document.createElement("div");
   recInner.style.width = "20px";
@@ -466,6 +481,13 @@ function showReplayWarning(message) {
   }, 3000);
 }
 
-setInterval(() => {
-  if (isRecording) observeAutoFilledInputs();
-}, 500);
+window.addEventListener("START_RECORDING", () => {
+  const btn = document.querySelector("#___toolbar_container div[data-rec]");
+  if (btn) btn.dataset.state = "recording";
+});
+
+window.addEventListener("STOP_RECORDING", () => {
+  const btn = document.querySelector("#___toolbar_container div[data-rec]");
+  if (btn) btn.dataset.state = "stopped";
+});
+

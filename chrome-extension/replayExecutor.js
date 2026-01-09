@@ -129,6 +129,7 @@ EXT.storage.local.get("AUTO_REPLAY_DATA", (res) => {
   function runStep() {
     if (index >= steps.length) {
       hud.innerText = "Replay completed ✅";
+      EXT.runtime.sendMessage({ type: "REPLAY_FINISHED" });
       setTimeout(() => hud.remove(), 2000);
       return;
     }

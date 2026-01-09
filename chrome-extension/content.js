@@ -220,6 +220,26 @@ function addHeader() {
   }, 3000);
 }
 
+
+function updateRecorderUI(isRecording) {
+  const recorderBtn = document.querySelector("#___toolbar_container div[data-rec]");
+  if (!recorderBtn) return;
+
+  const recInner = recorderBtn.firstChild;
+  const recLabel = recorderBtn.parentElement.querySelector("div:last-child");
+
+  if (isRecording) {
+    recorderBtn.dataset.state = "recording";
+    recInner.style.background = "#34c759";
+    recInner.style.borderRadius = "4px";
+//    recLabel.innerText = "Recording...";
+  } else {
+    recorderBtn.dataset.state = "stopped";
+    recInner.style.background = "#ff1a28";
+    recInner.style.borderRadius = "5px";
+//    recLabel.innerText = "Record";
+  }
+}
 // ================== TOOLBAR ==================
 function injectToolbarContainer() {
   if (document.getElementById("___toolbar_container")) return;
@@ -309,19 +329,16 @@ function injectToolbarContainer() {
   recorderBtn.onclick = toggleRecording;
 
   function toggleRecording() {
-    if (recorderBtn.dataset.state === "recording") {
-      recorderBtn.dataset.state = "stopped";
-      recInner.style.background = "#ff1a28";
-      recInner.style.borderRadius = "5px";
-      recLabel.innerText = "Record";
+    const isCurrentlyRecording =
+      recorderBtn.dataset.state === "recording";
+
+    if (isCurrentlyRecording) {
+      updateRecorderUI(false);
 
       EXT.runtime.sendMessage({ type: "STOP_RECORDING" });
       window.dispatchEvent(new CustomEvent("STOP_RECORDING"));
     } else {
-      recorderBtn.dataset.state = "recording";
-      recInner.style.background = "#34c759";
-      recInner.style.borderRadius = "4px";
-      recLabel.innerText = "Recording...";
+      updateRecorderUI(true);
 
       EXT.runtime.sendMessage({ type: "START_RECORDING" });
       window.dispatchEvent(new CustomEvent("START_RECORDING"));
@@ -482,12 +499,9 @@ function showReplayWarning(message) {
 }
 
 window.addEventListener("START_RECORDING", () => {
-  const btn = document.querySelector("#___toolbar_container div[data-rec]");
-  if (btn) btn.dataset.state = "recording";
+  updateRecorderUI(true);
 });
 
 window.addEventListener("STOP_RECORDING", () => {
-  const btn = document.querySelector("#___toolbar_container div[data-rec]");
-  if (btn) btn.dataset.state = "stopped";
+  updateRecorderUI(false);
 });
-

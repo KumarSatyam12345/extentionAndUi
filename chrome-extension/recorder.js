@@ -5,11 +5,24 @@ window.EXT = EXT;
 let isRecording = false;
 let userInteracted = false;
 let logs = [];
+let hasFlushed = false;
 
 // Highlight Configuration
 const HIGHLIGHT_COLOR = "rgba(255, 255, 0, 0.3)";
 const BORDER_COLOR = "yellow";
 const BORDER_WIDTH = 4;
+
+function flushLogs(reason = "unknown") {
+  if (hasFlushed) return;
+  if (!logs.length) return;
+
+  hasFlushed = true;
+
+  EXT.runtime.sendMessage({
+    type: "RECORDING_DATA",
+    payload: logs
+  });
+}
 
 function getXPath(element) {
   if (element.id) return `//*[@id="${element.id}"]`;
@@ -228,6 +241,12 @@ window.addEventListener("scroll", () => {
   logEvent("scroll", { position: window.scrollY });
 });
 
+window.addEventListener("beforeunload", () => {
+  if (!isRecording) return;
+
+  flushLogs("beforeunload");
+});
+
 // Tab navigation
 globalThis.addEventListener("keydown", (e) => {
   if (e.key === "Tab") commitFinalInput(document.activeElement);
@@ -248,6 +267,7 @@ globalThis.addEventListener("START_RECORDING", (e) => {
     logs = [];
     lastInputValue = {};
     userInteracted = false;
+    hasFlushed = false; // ✅ RESET HERE
   }
 
   isRecording = true;
@@ -256,8 +276,5 @@ globalThis.addEventListener("START_RECORDING", (e) => {
 
 globalThis.addEventListener("STOP_RECORDING", () => {
   isRecording = false;
-  EXT.runtime.sendMessage({
-    type: "RECORDING_DATA",
-    payload: logs
-  });
+  flushLogs("stop");
 });

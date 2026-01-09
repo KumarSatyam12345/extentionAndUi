@@ -175,7 +175,6 @@ EXT.tabs.onUpdated.addListener((tabId, info) => {
   if (info.status !== "complete") return;
   if (!extensionOpenedTabs.has(tabId)) return;
 
-  // 🚫 DO NOT inject UI during replay
   if (replayState) return;
 
   EXT.tabs.sendMessage(tabId, {
@@ -189,6 +188,15 @@ EXT.tabs.onUpdated.addListener((tabId, info) => {
   if (!headerInjectedTabs.has(tabId)) {
     EXT.tabs.sendMessage(tabId, { type: "SHOW_HEADER" });
     headerInjectedTabs.add(tabId);
+  }
+
+  // 🔥🔥 FIX: auto-resume recording on SAME TAB navigation
+  if (isRecording) {
+    setTimeout(() => {
+      EXT.tabs.sendMessage(tabId, {
+        type: "FORCE_START_RECORDING"
+      });
+    }, 300);
   }
 });
 
